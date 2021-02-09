@@ -5,9 +5,6 @@
 ###############################################################################
 ###############################################################################
 
-# Qsub:
-# qsub -e /share/homes/annieb6/logs/errors/ -o /share/homes/annieb6/logs/output/ -P proj_geospatial -N job_launch_antibiotics -q all.q -cwd -l archive=TRUE -l m_mem_free=15G -l fthread=2 -l h_rt=02:00:00:00  -v sing_image=default -p 0  /share/code/geospatial/annieb6/lbd_core/mbg_central/share_scripts/shell_sing.sh /share/code/geospatial/annieb6/lbd_amr/antibiotics/2_modelling/launch.R diarrhea_antibiotics fin
-
 ###############################################################################
 ## SETUP
 ###############################################################################
@@ -20,7 +17,6 @@ user              <- Sys.info()['user']
 user_repo         <- paste0('/share/code/geospatial/',user,'/lbd_amr/typhi_paratyphi/mbg/')
 core_repo         <- '/share/code/geospatial/annieb6/lbd_core/'
 indicator_group   <- 'lbd_amr'
-#indicator         <- as.character(commandArgs()[4])
 indicator         <- 'mdr_typhi'
 nid_holdouts      <- TRUE
 
@@ -106,7 +102,7 @@ if(nid_holdouts == TRUE){
     nid <- unique(stratum_ho[[i]]$nid)
     nid <- sample(nid)
     nid <- data.table(nid)
-    nid$fold <- cut(seq(1,nrow(nid)),breaks=5,labels=FALSE)
+    nid$fold <- cut(seq(1,nrow(nid)),breaks=as.numeric(n_ho_folds),labels=FALSE)
     stratum_ho[[i]]$fold <- NULL
     stratum_ho[[i]]$ho_id <- NULL
     stratum_ho[[i]] <- merge(stratum_ho[[i]], nid)
@@ -263,19 +259,6 @@ csv_master <- lapply(csvs, fread) %>%
   rbindlist(fill = TRUE) %>%
   subset(., select = names(.) != "V1")
 write.csv(csv_master, file=paste0(sharedir, '/output/', run_date, '/input_data.csv'))
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~#
-# model validation script #
-#~~~~~~~~~~~~~~~~~~~~~~~~~#
-qsub <- paste0('qsub -e /ihme/geospatial/mbg/lbd_amr/mdr_typhi/output/', run_date, '/errors ',
-               '-o //ihme/geospatial/mbg/lbd_amr/mdr_typhi/output/', run_date, '/output ',
-               '-P proj_geo_nodes -N mdr_checks ',
-               '-q geospatial.q -cwd -l archive=TRUE ',
-               '-l m_mem_free=30G -l fthread=6 -l h_rt=00:12:00:00 ',
-               '-v sing_image=default -p 0  ',
-               '/share/code/geospatial/annieb6/lbd_core//mbg_central/share_scripts/shell_sing.sh ',
-               '/share/code/geospatial/annieb6/lbd_amr/typhi_paratyphi/mbg/2_modelling/mdr_typhi/post_model_checks.R ', run_date, ' fin')
-system(qsub)
 
 #~~~~~~~~~~~~~#
 # END OF FILE #

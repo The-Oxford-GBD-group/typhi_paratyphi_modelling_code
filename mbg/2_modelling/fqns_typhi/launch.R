@@ -21,7 +21,7 @@ user_repo         <- paste0('/share/code/geospatial/',user,'/lbd_amr/typhi_parat
 core_repo         <- '/share/code/geospatial/annieb6/lbd_core/'
 indicator_group   <- 'lbd_amr'
 #indicator         <- as.character(commandArgs()[4])
-indicator         <- 'mdr_typhi'
+indicator         <- 'fqns_typhi'
 nid_holdouts      <- FALSE
 
 ## sort some directory stuff and pull newest code into share
@@ -40,8 +40,8 @@ run_date <- make_time_stamp(TRUE)
 
 ## Read config file and save all parameters in memory
 config <- set_up_config(repo          = core_repo,
-                        config_file   = paste0(user_repo, '2_modelling/mdr_typhi/config_', indicator, '.csv'),
-                        covs_file     = paste0(user_repo, '2_modelling/mdr_typhi/covlist.csv'))
+                        config_file   = paste0(user_repo, '2_modelling/fqns_typhi/config_', indicator, '.csv'),
+                        covs_file     = paste0(user_repo, '2_modelling/fqns_typhi/covlist.csv'))
                       
 ## Create a few objects from the config file loaded above
 if (class(Regions) == "character" & length(Regions) == 1) Regions <- eval(parse(text=Regions))
@@ -62,10 +62,6 @@ if (as.logical(individual_countries) == TRUE) {
   use_inla_country_fes  <- FALSE
   use_inla_country_res  <- FALSE
 }
-
-#include the antibiotic covariates
-abx_covs <- c('ddd_per_1000')
-# use_geos_nodes = FALSE
 
 ###############################################################################
 ## Make Holdouts
@@ -93,12 +89,12 @@ if(as.logical(makeholdouts)){
                            ts         = as.numeric(ho_ts),
                            mb         = as.numeric(ho_mb))
 } else {
-  
+
   df$t_fold <-  0
   df$fold <- 0
   df$ho_id <- 0
   saveRDS(df, sprintf('/share/geospatial/mbg/%s/%s/output/%s/stratum.rds', indicator_group, indicator, run_date))
-  
+
 }
 rm(df)
 
@@ -126,9 +122,9 @@ if(as.logical(makeholdouts)) loopvars <- expand.grid(Regions, 0, 0:n_ho_folds) e
 
 ## loop over them, save images and submit qsubs
 for(i in 1:nrow(loopvars)){
-  
+
   message(paste(loopvars[i,2],as.character(loopvars[i,1]),loopvars[i,3]))
-  
+
   # make a qsub string
   qsub <- make_qsub_share(age           = loopvars[i,2],
                           reg           = as.character(loopvars[i,1]),
@@ -144,9 +140,9 @@ for(i in 1:nrow(loopvars)){
                           proj          = ifelse(as.logical(use_geos_nodes) == TRUE, 'proj_geo_nodes', 'proj_geospatial'),
                           singularity   = 'default',
                           run_time      = '12:00:00',
-                          queue         = ifelse(as.logical(use_geos_nodes) == TRUE, 'geospatial.q', 'all.q') 
+                          queue         = ifelse(as.logical(use_geos_nodes) == TRUE, 'geospatial.q', 'all.q')
   )
-  
+
   system(qsub)
 }
 
@@ -182,7 +178,7 @@ for (s in strata) {
                             singularity                 = "default",
                             subnat_raking               = subnational_raking,
                             modeling_shapefile_version  = modeling_shapefile_version,
-                            raking_shapefile_version    = raking_shapefile_version, 
+                            raking_shapefile_version    = raking_shapefile_version,
                             geo_nodes                   = as.logical(use_geos_nodes),
                             proj                        = ifelse(as.logical(use_geos_nodes) == TRUE, 'proj_geo_nodes', 'proj_geospatial'),                            cores                       = 10,
                             run_time                    = '6:00:00',
@@ -269,20 +265,14 @@ write.csv(csv_master, file=paste0(sharedir, '/output/', run_date, '/input_data.c
 #~~~~~~~~~~~~~~~~~~~~~~~~~#
 # model validation script #
 #~~~~~~~~~~~~~~~~~~~~~~~~~#
-qsub <- make_qsub_share(code          = ('/share/code/geospatial/annieb6/lbd_amr/diarrhea_antibiotics/4_post_processing/post_model_checks.R'),
-                        test          = as.logical(test),
-                        indic         = indicator,
-                        ig            = indicator_group,
-                        saveimage     = FALSE,
-                        addl_job_name = paste0(indicator, '_model_checks'),
-                        memory        = 30,
-                        cores         = slots,
-                        geo_nodes     = as.logical(use_geos_nodes),
-                        proj          = ifelse(as.logical(use_geos_nodes) == TRUE, 'proj_geo_nodes', 'proj_geospatial'),
-                        singularity   = 'default',
-                        run_time      = '24:00:00',
-                        queue         = ifelse(as.logical(use_geos_nodes) == TRUE, 'geospatial.q', 'all.q'))
-
+qsub <- paste0('qsub -e /ihme/geospatial/mbg/lbd_amr/fqns_typhi/output/', run_date, '/errors ',
+               '-o //ihme/geospatial/mbg/lbd_amr/fqns_typhi/output/', run_date, '/output ',
+               '-P proj_geo_nodes -N fqns_checks ',
+               '-q geospatial.q -cwd -l archive=TRUE ',
+               '-l m_mem_free=30G -l fthread=6 -l h_rt=00:12:00:00 ',
+               '-v sing_image=default -p 0  ',
+               '/share/code/geospatial/annieb6/lbd_core//mbg_central/share_scripts/shell_sing.sh ',
+               '/share/code/geospatial/annieb6/lbd_amr/typhi_paratyphi/mbg/2_modelling/fqns_typhi/post_model_checks.R ', run_date, ' fin')
 system(qsub)
 
 #~~~~~~~~~~~~~#
