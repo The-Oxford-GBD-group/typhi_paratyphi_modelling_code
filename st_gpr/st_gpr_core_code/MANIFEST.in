@@ -1,0 +1,6 @@
+include versioneer.py
+include stgpr/_version.py
+include stgpr/model/*.R
+graft stgpr/r_functions
+graft stgpr/shells
+graft stgpr/templates
