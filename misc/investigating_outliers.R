@@ -7,8 +7,10 @@ library(ggplot2)
 library(ggforce)
 
 # Setup ####
-indicator = 'MDR_paratyphi'
-mydata <- read.csv(paste0('/share/homes/annieb6/AMR/typhi_paratyphi/datasets/', indicator, '.csv'), stringsAsFactors = F)
+indicator = 'MDR_typhi'
+# mydata <- read.csv(paste0('/share/homes/annieb6/AMR/typhi_paratyphi/datasets/', indicator, '.csv'), stringsAsFactors = F)
+mydata <- read.csv(paste0('Z:/AMR/Pathogens/typhi_paratyphi/model_prep/clean_data/stgpr_files/', indicator, '.csv'), stringsAsFactors = F)
+
 mydata <- mydata[mydata$sample_size>=5,]
 mydata <- mydata[mydata$nid != 3286,]
 if(grep('paratyphi', indicator) == 1){
@@ -18,7 +20,9 @@ if(grep('paratyphi', indicator) == 1){
                      mydata$region == 'South Asia',]
 }
 
-covs <- read.csv('/share/homes/annieb6/covariates/cleaned_covs.csv')
+# covs <- read.csv('/share/homes/annieb6/covariates/cleaned_covs.csv')
+covs <- read.csv('Z:/AMR/Pathogens/typhi_paratyphi/covariates/cleaned_covs.csv')
+
 covs <- covs[names(covs) %in% c('location_id', 'year_id', 
                                 'cv_hib3_coverage_prop' ,
                                 "cv_hospital_beds_per1000",
@@ -32,28 +36,12 @@ covs <- covs[names(covs) %in% c('location_id', 'year_id',
                                'cv_tfr',
                                'cv_he_cap')]
 #centre scale covs
-source('/share/code/geospatial/annieb6/misc/centre_scale.R')
-design_matrix = data.frame(covs[,3:13])
-cs_df <- getCentreScale(design_matrix)
-design_matrix <- centreScale(design_matrix, df = cs_df)
-covs[,3:13] <- design_matrix
-rm(design_matrix, cs_df)
+covs$year <- covs$year_id
+covs[,2:13] <- scale(covs[,2:13])
 
 #merge data and covs
-mydata <- merge(mydata, covs, by = c('location_id', 'year_id'), all.x = T, all.y = F)
-
-#centre scale year
-mydata$year <- mydata$year_id
-covs$year <- covs$year_id
-design_matrix = data.frame(mydata[,2])
-cs_df <- getCentreScale(design_matrix)
-design_matrix <- centreScale(design_matrix, df = cs_df)
-mydata[,2] <-  design_matrix
-
-design_matrix = data.frame(covs[,2])
-cs_df <- getCentreScale(design_matrix)
-design_matrix <- centreScale(design_matrix, df = cs_df)
-covs[,2] <-  design_matrix
+colnames(mydata)[colnames(mydata) == 'year_id'] <- 'year'
+mydata <- merge(mydata, covs, by = c('location_id', 'year'), all.x = T, all.y = F)
 
 #build the glm ####
 #Gaussian model
@@ -90,26 +78,32 @@ model1 <- glmer(response ~ 1 +
                 # cv_hiv+
                 cv_tfr+
                 # cv_he_cap+
-                  (1 |super_region / region / country), data = mydata, family = 'binomial')
+                (1 |super_region / region / country), 
+                data = mydata, 
+                family = 'binomial',
+                control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=2e5)))
 
 summary(model1)
 
 #predict out to all typhi endmic locations ####
-locs             <- read.dbf('/snfs1/DATA/SHAPE_FILES/GBD_geographies/master/GBD_2019/master/shapefiles/GBD2019_analysis_final_loc_set_22.dbf')
-endemic <- read.csv('/ihme/homes/annieb6/AMR/typhi_paratyphi/typhi_endemic_locations.csv', stringsAsFactors = F)
-locs <- locs[locs$loc_id %in% endemic$loc_id,]
-locs <- locs[locs$level ==3,]
+# locs             <- read.dbf('/snfs1/DATA/SHAPE_FILES/GBD_geographies/master/GBD_2019/master/shapefiles/GBD2019_analysis_final_loc_set_22.dbf')
+locs <- read.dbf('Z:/AMR/Shapefiles/typhi_endemic.dbf')
+
+# endemic <- read.csv('/ihme/homes/annieb6/AMR/typhi_paratyphi/typhi_endemic_locations.csv', stringsAsFactors = F)
+# locs <- locs[locs$loc_id %in% endemic$loc_id,]
+# locs <- locs[locs$level ==3,]
 if(grep('paratyphi', indicator) == 1){
   locs <- locs[locs$region_id == 159 |
                  locs$region_id == 9 |
                  locs$region_id == 5,]
 }
-rm(endemic)
+# rm(endemic)
 
 covs <- merge(covs, locs, by.x = 'location_id', by.y = 'loc_id')
 colnames(covs)[colnames(covs) == 'ihme_lc_id'] <- 'country'
 colnames(covs)[colnames(covs) == 'region_id'] <- 'region'
 colnames(covs)[colnames(covs) == 'spr_reg_id'] <- 'super_region'
+covs$region <-  as.numeric(as.character(covs$region))
 covs$region[covs$region == 5] <- 'East Asia '
 covs$region[covs$region == 9] <- 'Southeast Asia'
 covs$region[covs$region == 65] <- 'High-income Asia Pacific'
@@ -120,6 +114,7 @@ covs$region[covs$region == 174] <- 'Eastern Sub-Saharan Africa'
 covs$region[covs$region == 192] <- 'Southern Sub-Saharan Africa'
 covs$region[covs$region == 199] <- 'Western Sub-Saharan Africa'
 
+covs$super_region <-  as.numeric(as.character(covs$super_region))
 covs$super_region[covs$super_region == 64] <- 'High Income'
 covs$super_region[covs$super_region == 137] <- 'North Africa & Middle East'
 covs$super_region[covs$super_region == 158] <- 'South Asia'
@@ -145,20 +140,23 @@ covs$sample_size_bins <-  as.factor(covs$sample_size_bins)
 covs$sample_size_bins <- factor(covs$sample_size_bins, levels = c("10-49", "50-99", "100-499", "500+"))
 
 # Plot 
-pdf(paste0('/share/homes/annieb6/AMR/typhi_paratyphi/identifying_outliers/', indicator, '/glm_model+year.pdf'),
+# pdf(paste0('/share/homes/annieb6/AMR/typhi_paratyphi/identifying_outliers/', indicator, '/glm_model+year.pdf'),
+pdf(paste0('Z:/AMR/Pathogens/typhi_paratyphi/model_prep/outliering/MAD/', indicator, '_glm_model+year.pdf'),
     height = 17,
     width = 12)
 
-for(i in 1:(ceiling(length(unique(covs$super_region))))){
-  print(ggplot(covs[covs$super_region==unique(covs$super_region)[i],])+
-          geom_line(aes(x = year_id, y = pred))+
-          geom_point(aes(x = year_id, y = val))+
-          facet_wrap_paginate(~country, page = i)
+for(i in 1:length(unique(covs$super_region))){
+  subset <- covs[covs$super_region == unique(covs$super_region)[i],]
+  print(
+    ggplot(subset)+
+          geom_line(aes(x = year, y = pred))+
+          geom_point(aes(x = year, y = val))+
+          facet_wrap(~country)
   )}
 
 dev.off()
 
-saveRDS(model1, paste0('/ihme/homes/annieb6/AMR/typhi_paratyphi/identifying_outliers/', indicator, '/glm_model.rds'))
+# saveRDS(model1, paste0('/ihme/homes/annieb6/AMR/typhi_paratyphi/identifying_outliers/', indicator, '/glm_model.rds'))
 
 # Define outliers ####
 
@@ -237,21 +235,22 @@ saveRDS(model1, paste0('/ihme/homes/annieb6/AMR/typhi_paratyphi/identifying_outl
 # Try various values of n
 # Want to outlier ~10% of the data
 library(stats)
+library(data.table)
 covs <- data.table(covs)
 # covs$upper_bound <-  NULL
 # covs$lower_bound <-  NULL
-MADs <-  covs[,.(upper_bound = pred + 2*mad(pred[!is.na(val)], val[!is.na(val)]),
-                 lower_bound = pred - 2*mad(pred[!is.na(val)],val[!is.na(val)])),
+MADs <-  covs[,.(upper_bound = pred + 2.5*mad(pred[!is.na(val)], val[!is.na(val)]),
+                 lower_bound = pred - 2.5*mad(pred[!is.na(val)],val[!is.na(val)])),
               by = c('country')]
 
-MADs <- MADs[,2:3]
-covs <- cbind(covs, MADs)
+covs <- cbind(covs, MADs[,2:3])
 covs$upper_bound[covs$upper_bound>1] <- 1
 covs$lower_bound[covs$lower_bound<0] <- 0
 
 covs <- covs[!is.na(covs$super_region),]
-pdf(paste0('/share/homes/annieb6/AMR/typhi_paratyphi/identifying_outliers/', indicator, '/glm_model_bounded_1_5_MAD_by_country.pdf'),
-    height = 17,
+# pdf(paste0('/share/homes/annieb6/AMR/typhi_paratyphi/identifying_outliers/', indicator, '/glm_model_bounded_1_5_MAD_by_country.pdf'),
+pdf(paste0('Z:/AMR/Pathogens/typhi_paratyphi/model_prep/outliering/MAD/', indicator, '_glm_model_bounded_2_5_MAD_by_country.pdf'),
+        height = 17,
     width = 12) 
 
 for(i in 1:(ceiling(length(unique(covs$super_region))))){ 
@@ -273,7 +272,7 @@ mydata$is_outlier[mydata$val<mydata$lower_bound |mydata$val>mydata$upper_bound] 
 mydata$is_outlier[mydata$val>mydata$lower_bound & mydata$val<mydata$upper_bound] <- 0
 outliers <- mydata[mydata$is_outlier == 1,]
 outliers <- unique(outliers[c('nid', 'year')])
-write.csv(outliers, paste0('/ihme/homes/annieb6/AMR/typhi_paratyphi/identifying_outliers/', indicator, '/outlier_nids.csv'), row.names = F)
+# write.csv(outliers, paste0('/ihme/homes/annieb6/AMR/typhi_paratyphi/identifying_outliers/', indicator, '/outlier_nids.csv'), row.names = F)
 
 mydata$year_id <-  NULL
 colnames(mydata)[colnames(mydata) == 'year'] <-  'year_id'
@@ -293,5 +292,25 @@ mydata <- mydata[c("location_id",
                    "variance",
                    "QA")]
 
-write.csv(mydata, paste0('/share/homes/annieb6/AMR/typhi_paratyphi/datasets/', indicator, '_outliered.csv'), row.names = F)
+# write.csv(mydata, paste0('/share/homes/annieb6/AMR/typhi_paratyphi/datasets/', indicator, '_outliered.csv'), row.names = F)
+write.csv(mydata, paste0('Z:/AMR/Pathogens/typhi_paratyphi/model_prep/outliering/MAD/', indicator, '_outliered_2_5_mad.csv'), row.names = F)
 
+
+pdf('Z:/AMR/Pathogens/typhi_paratyphi/model_prep/outliering/MAD/MAD_outlier2_5.pdf',
+    height = 8.3, width = 11.7)
+#plot out a page for each region
+for(i in 1:length(unique(mydata$super_region))){
+  subset <- mydata[mydata$super_region == unique(mydata$super_region)[i],]
+  print(
+    ggplot(subset)+
+      geom_point(aes(x = year_id, y = val, colour = as.factor(is_outlier)))+
+      facet_wrap(~country)+
+      ylim(0,1)+
+      ylab('Proportion DR')+
+      theme_bw()+
+      scale_x_continuous("Year", 
+                         breaks = seq(1990, 2018, 5),
+                         labels = c("1990", "1995", "2000", "2005", "2010", "2015"))
+  )
+}
+dev.off()

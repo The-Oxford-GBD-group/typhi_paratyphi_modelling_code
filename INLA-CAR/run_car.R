@@ -3,7 +3,7 @@
 ##############################
 rm(list = ls())
 setwd("Z:/AMR/Pathogens/typhi_paratyphi/model_results/CAR_INLA")
-model_id <-  '17_raw_covs'
+model_id <-  '20_sp_precPrior'
 dir.create(model_id)
 #######################
 #### Load libraries####
@@ -16,7 +16,8 @@ library(maptools)
 library(INLA)
 library(raster)
 library(ggplot2)
-
+library(foreign)
+library(plyr)
 RMSE = function(m, o){
   sqrt(mean((m - o)^2))
 }
@@ -62,8 +63,8 @@ mydata <- merge(mydata, locs, by.x = c('location_id'), by.y = c('loc_id'))
 mydata$pos <- round(mydata$val*mydata$sample_size, 0)
 
 #read in covariates, convert location and year IDs and centre scale
-# covs <- read.csv("child_models.csv")
-covs <- read.csv('Z:/AMR/Pathogens/typhi_paratyphi/covariates/cleaned_covs.csv')
+covs <- read.csv("child_models.csv")
+# covs <- read.csv('Z:/AMR/Pathogens/typhi_paratyphi/covariates/cleaned_covs.csv')
 
 #select those to include
 covs_to_include <- c('gam', 'rf', 'nnet')
@@ -106,7 +107,7 @@ mydata$year <- mydata$year_id-1989
 
 
 #Introduce a columns  space and time
-mydata <- cbind(mydata, reg0=mydata$adj_id, reg1=mydata$adj_id, time0=mydata$year, time1=mydata$year, time2=mydata$year)
+mydata <- cbind(mydata, reg0=mydata$adj_id, reg1=mydata$adj_id, time0=mydata$year, time1=mydata$year, time2=mydata$year, reg_id = mydata$region_id)
 head(mydata)
 
 # #add a survey level random effect
@@ -119,8 +120,11 @@ head(mydata)
 #####################################
 #### Fit ST CAR model using INLA ####
 #####################################
+prec_prior <-  list(prec = list(prior = "pc.prec", param = c(1, 0.01)), initial = 4, fixed = FALSE)  #theta1
+phi_prior <-   list(prec = list(prior = "pc", param = c(0.5, 0.5)), initial = -3, fixed = FALSE)  #theta2
+
 formula <-  as.formula(paste0('pos ~ -1 + ', paste(covs_to_include, collapse = " + "), ' +
-f(reg0, model="bym2", graph="typhi_adj.adj")+
+f(reg0, model="bym2", graph="typhi_adj.adj", hyper=list(prec_prior, phi_prior))+
 f(time0,model="rw1")+
 f(reg1,time2,model="iid")'))
 
