@@ -16,17 +16,17 @@
   # i. Setup ####
   #~~~~~~~~~~~~~#
   #set output directory
-  model_date = 'add_typhi_cov'
-  region = NULL
-  model_date <- paste0(model_date, '_FQNS_Paratyphi_', region)
+  model_date <- 'FQNS_Paratyphi_040521_2'
+  # region = NULL
+  # model_date <- paste0(model_date, '_FQNS_Paratyphi_', region)
   outputdir <-  paste0('/ihme/homes/annieb6/AMR/typhi_paratyphi/stackers/', model_date, '/')
   dir.create(outputdir, showWarnings = F, recursive = T)
   set.seed(54321)
   
   #Load data
-  mydata <- data.table(read.csv('/ihme/homes/annieb6/AMR/typhi_paratyphi/datasets/FQNS_paratyphi.csv', stringsAsFactors = F))
+  mydata <- data.table(read.csv('/ihme/homes/annieb6/AMR/typhi_paratyphi/datasets/FQNS_paratyphi_outliered_300421.csv', stringsAsFactors = F))
   mydata <- mydata[mydata$is_outlier == 0,]
-  mydata <- mydata[mydata$sample_size>=20,] 
+  mydata <- mydata[mydata$sample_size>=5,] 
   mydata$val[mydata$val>=1] <- 0.999
   
   child_models <- c('ridge', 'gam', 'cubist')
@@ -66,7 +66,8 @@
                          "cv_hospital_beds_per1000",
                          "ddd_per_1000",
                          "cv_mean_temperature",              
-                         'cv_abx_prop', 'cv_latitude')
+                         'cv_abx_prop', 
+                         'cv_latitude')
   #specify what you columns are
   p <- 'val'          #the proportion of your indicator successes
   n <- NULL            #the number of your indicator successes
@@ -112,6 +113,13 @@
   #restrict covs to those included
   covs <- covs[colnames(covs) %in% covs_to_include | colnames(covs)=='location_id' | colnames(covs) =='year_id']
   
+  #fill in abx prop for oceania without estimates 
+  covs <- covs[order(covs$location_id, covs$year_id),]
+  for(i in c(320, 351, 374, 376, 380, 413)){
+    covs$cv_abx_prop[covs$location_id == i] <- covs$cv_abx_prop[covs$location_id == 7]
+  }
+  
+  #will make square will locs not being estimates later
   covs <- na.omit(covs)
   
   # #add on the FQNS_Typhi estimates as a covariate
@@ -820,19 +828,19 @@
   # child_models <- child_models[child_models!='lasso']
   # # child_models <- child_models[child_models!='ridge']
   # child_models <- child_models[child_models!='enet']
-  # # child_models <- child_models[child_models!='rf']
-  child_models <- child_models[child_models!='nnet']
+  # child_models <- child_models[child_models!='rf']
+  # child_models <- child_models[child_models!='nnet']
   # child_models <- child_models[child_models!='cubist']
   
   #remove unwanted child models from the data frame to calculate child model weights
   stackers <- data.table(mydata)
   # stackers[, (colnames(stackers)[grep('xgboost', colnames(stackers))]) := NULL]
-  # # stackers[, (colnames(stackers)[grep('gam', colnames(stackers))]) := NULL]
+  # stackers[, (colnames(stackers)[grep('gam', colnames(stackers))]) := NULL]
   # stackers[, (colnames(stackers)[grep('lasso', colnames(stackers))]) := NULL]
-  # # stackers[, (colnames(stackers)[grep('ridge', colnames(stackers))]) := NULL]
+  # stackers[, (colnames(stackers)[grep('ridge', colnames(stackers))]) := NULL]
   # stackers[, (colnames(stackers)[grep('enet', colnames(stackers))]) := NULL]
-  # # stackers[, (colnames(stackers)[grep('rf', colnames(stackers))]) := NULL]
-  stackers[, (colnames(stackers)[grep('nnet', colnames(stackers))]) := NULL]
+  # stackers[, (colnames(stackers)[grep('rf', colnames(stackers))]) := NULL]
+  # stackers[, (colnames(stackers)[grep('nnet', colnames(stackers))]) := NULL]
   # stackers[, (colnames(stackers)[grep('cubist', colnames(stackers))]) := NULL]
   
   stackers <- data.frame(stackers)
@@ -1135,9 +1143,8 @@
   
 
   mydata <- read.csv('/ihme/homes/annieb6/AMR/typhi_paratyphi/stackers/Final_min20_FQNS_Paratyphi_/square.csv')
-  estimate <- read.csv('/ihme/homes/annieb6/AMR/typhi_paratyphi/stackers/FinalFinal_FQNS_Paratyphi//custom_stage1_df.csv')
+  estimate <- read.csv('/ihme/homes/annieb6/AMR/typhi_paratyphi/stackers/FQNS_Paratyphi_040521_2/custom_stage1_df.csv')
 
   mydata <- mydata[!(mydata$location_id %in% estimate$location_id),]
   mydata <- rbind(mydata, estimate)
-  write.csv(mydata, '/ihme/homes/annieb6/AMR/typhi_paratyphi/stackers/FinalFinal_FQNS_Paratyphi/custom_stage1_df.csv')  
-  
+  write.csv(mydata, '/ihme/homes/annieb6/AMR/typhi_paratyphi/stackers/FQNS_Paratyphi_040521_2/custom_stage1_df.csv')

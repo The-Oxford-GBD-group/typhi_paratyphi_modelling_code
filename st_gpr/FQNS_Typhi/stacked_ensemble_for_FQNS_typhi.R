@@ -17,12 +17,12 @@ library(randomForest, lib = '/ihme/homes/annieb6/temp_packages')
 #~~~~~~~~~~~~~#
 #set output directory
 # model_date = format(Sys.Date(), "%Y_%m_%d")
-model_date <- 'FQNS_Typhi_final'
+model_date <- 'FQNS_Typhi_040521'
 outputdir <-  paste0('/ihme/homes/annieb6/AMR/typhi_paratyphi/stackers/', model_date, '/')
 dir.create(outputdir, showWarnings = F, recursive = T)
 
 #Load data
-mydata <- data.table(read.csv('/ihme/homes/annieb6/AMR/typhi_paratyphi/datasets/FQNS_typhi_outliered.csv', stringsAsFactors = F))
+mydata <- data.table(read.csv('/ihme/homes/annieb6/AMR/typhi_paratyphi/datasets/FQNS_typhi_outliered_040521.csv', stringsAsFactors = F))
 mydata <- mydata[mydata$is_outlier == 0,]
 mydata <- mydata[mydata$sample_size>=5,] #542 datapoints
 # mydata <- mydata[mydata$sample_size>=10,] #516 datapoints
