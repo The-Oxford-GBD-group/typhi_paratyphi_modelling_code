@@ -9,30 +9,32 @@ source('/share/code/st_gpr/central/stgpr/r_functions/utilities/utility.r')
 RMSE = function(m, o){
   sqrt(mean((m - o)^2))
 }
-run_date = 'FQNS_Paratyphi_final_min20'
+run_date = 'MDR_Typhi_final_10HO'
 mydata <- read.csv(paste0('/share/homes/annieb6/AMR/typhi_paratyphi/stackers/holdouts/', run_date, '/master_data.csv'), stringsAsFactors = F)
 mydata <- mydata[mydata$is_outlier == 0,]
 colnames(mydata)[colnames(mydata)=='p'] <- 'val'
-run_ids <- c('176723',
-             '176726',
-             '176729',
-             '176732',
-             '176735',
-             '176738',
-             '176741',
-             '176744',
-             '176747',
-             '176750'             )
+run_ids <- c('174632',
+             '174644',
+             '174647',
+             '174650',
+             '174653',
+             '174656',
+             '174659',
+             '174662',
+             '174665',
+             '174668'
+)
 
 #load in the GPR results and look at the OOS fits
 for(i in 1:length(run_ids)){
   gpr <- model_load(run_ids[i], 'gpr')
-  gpr <- gpr[,1:5]
+  # gpr <- gpr[,1:5]
   gpr$age_group_id <- NULL
   gpr$sex_id <- NULL
   mydata <- merge(mydata, gpr, by = c('location_id', 'year_id'))
   colnames(mydata)[colnames(mydata) == 'gpr_mean'] <- paste0('se_stgpr_ho', i)
-  
+  colnames(mydata)[colnames(mydata) == 'gpr_lower'] <- paste0('lower_ho', i)
+  colnames(mydata)[colnames(mydata) == 'gpr_upper'] <- paste0('upper_ho', i)
 }
 
 mydata$se_stgpr_oos <- NA
@@ -41,14 +43,41 @@ mydata$se_stgpr_oos[mydata$master_fold_id == 2] <- mydata$se_stgpr_ho2[mydata$ma
 mydata$se_stgpr_oos[mydata$master_fold_id == 3] <- mydata$se_stgpr_ho3[mydata$master_fold_id == 3]
 mydata$se_stgpr_oos[mydata$master_fold_id == 4] <- mydata$se_stgpr_ho4[mydata$master_fold_id == 4]
 mydata$se_stgpr_oos[mydata$master_fold_id == 5] <- mydata$se_stgpr_ho5[mydata$master_fold_id == 5]
-mydata$se_stgpr_oos[mydata$master_fold_id == 6] <- mydata$se_stgpr_ho1[mydata$master_fold_id == 6]
-mydata$se_stgpr_oos[mydata$master_fold_id == 7] <- mydata$se_stgpr_ho2[mydata$master_fold_id == 7]
-mydata$se_stgpr_oos[mydata$master_fold_id == 8] <- mydata$se_stgpr_ho3[mydata$master_fold_id == 8]
-mydata$se_stgpr_oos[mydata$master_fold_id == 9] <- mydata$se_stgpr_ho4[mydata$master_fold_id == 9]
-mydata$se_stgpr_oos[mydata$master_fold_id ==10] <- mydata$se_stgpr_ho5[mydata$master_fold_id ==10]
+mydata$se_stgpr_oos[mydata$master_fold_id == 6] <- mydata$se_stgpr_ho6[mydata$master_fold_id == 6]
+mydata$se_stgpr_oos[mydata$master_fold_id == 7] <- mydata$se_stgpr_ho7[mydata$master_fold_id == 7]
+mydata$se_stgpr_oos[mydata$master_fold_id == 8] <- mydata$se_stgpr_ho8[mydata$master_fold_id == 8]
+mydata$se_stgpr_oos[mydata$master_fold_id == 9] <- mydata$se_stgpr_ho9[mydata$master_fold_id == 9]
+mydata$se_stgpr_oos[mydata$master_fold_id ==10] <- mydata$se_stgpr_ho10[mydata$master_fold_id ==10]
+
+mydata$upper_oos <- NA
+mydata$upper_oos[mydata$master_fold_id == 1] <- mydata$upper_ho1[mydata$master_fold_id == 1]
+mydata$upper_oos[mydata$master_fold_id == 2] <- mydata$upper_ho2[mydata$master_fold_id == 2]
+mydata$upper_oos[mydata$master_fold_id == 3] <- mydata$upper_ho3[mydata$master_fold_id == 3]
+mydata$upper_oos[mydata$master_fold_id == 4] <- mydata$upper_ho4[mydata$master_fold_id == 4]
+mydata$upper_oos[mydata$master_fold_id == 5] <- mydata$upper_ho5[mydata$master_fold_id == 5]
+mydata$upper_oos[mydata$master_fold_id == 6] <- mydata$upper_ho6[mydata$master_fold_id == 6]
+mydata$upper_oos[mydata$master_fold_id == 7] <- mydata$upper_ho7[mydata$master_fold_id == 7]
+mydata$upper_oos[mydata$master_fold_id == 8] <- mydata$upper_ho8[mydata$master_fold_id == 8]
+mydata$upper_oos[mydata$master_fold_id == 9] <- mydata$upper_ho9[mydata$master_fold_id == 9]
+mydata$upper_oos[mydata$master_fold_id ==10] <- mydata$upper_ho10[mydata$master_fold_id ==10]
+
+mydata$lower_oos <- NA
+mydata$lower_oos[mydata$master_fold_id == 1] <- mydata$lower_ho1[mydata$master_fold_id == 1]
+mydata$lower_oos[mydata$master_fold_id == 2] <- mydata$lower_ho2[mydata$master_fold_id == 2]
+mydata$lower_oos[mydata$master_fold_id == 3] <- mydata$lower_ho3[mydata$master_fold_id == 3]
+mydata$lower_oos[mydata$master_fold_id == 4] <- mydata$lower_ho4[mydata$master_fold_id == 4]
+mydata$lower_oos[mydata$master_fold_id == 5] <- mydata$lower_ho5[mydata$master_fold_id == 5]
+mydata$lower_oos[mydata$master_fold_id == 6] <- mydata$lower_ho6[mydata$master_fold_id == 6]
+mydata$lower_oos[mydata$master_fold_id == 7] <- mydata$lower_ho7[mydata$master_fold_id == 7]
+mydata$lower_oos[mydata$master_fold_id == 8] <- mydata$lower_ho8[mydata$master_fold_id == 8]
+mydata$lower_oos[mydata$master_fold_id == 9] <- mydata$lower_ho9[mydata$master_fold_id == 9]
+mydata$lower_oos[mydata$master_fold_id ==10] <- mydata$lower_ho10[mydata$master_fold_id ==10]
 
 se_stgpr_r2 <- cor(mydata$val, mydata$se_stgpr_oos)^2
 se_stgpr_rmse <- RMSE(mydata$val, mydata$se_stgpr_oos)
+mydata$coverage <- mydata$val>mydata$lower_oos & mydata$se_stgpr_oos<mydata$upper_oos
+length(mydata$coverage[mydata$coverage==TRUE])/length(mydata$coverage)
+
 
 min <- min(c(mydata$val, mydata$se_stgpr_oos))
 max <- max(c(mydata$val, mydata$se_stgpr_oos))
