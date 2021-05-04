@@ -18,8 +18,8 @@
   #~~~~~~~~~~~~~#
   #set output directory
   # model_date = format(Sys.Date(), "%Y_%m_%d")
-  model_date <- 'MDR_Typhi_final'
-  region <- 'sSA'
+  model_date <- 'MDR_Typhi_300421'
+  region <- 'Asia'
   model_date <- paste0(model_date, '_', region)
   set.seed(54321)
   
@@ -27,7 +27,7 @@
   dir.create(outputdir, showWarnings = F, recursive = T)
   
   #Load data
-  mydata <- data.table(read.csv('/ihme/homes/annieb6/AMR/typhi_paratyphi/datasets/MDR_typhi_outliered_over5.csv', stringsAsFactors = F))
+  mydata <- data.table(read.csv('/ihme/homes/annieb6/AMR/typhi_paratyphi/datasets/MDR_typhi_outliered_300421.csv', stringsAsFactors = F))
   mydata <- mydata[mydata$is_outlier == 0,]
   
   #specify child models to include

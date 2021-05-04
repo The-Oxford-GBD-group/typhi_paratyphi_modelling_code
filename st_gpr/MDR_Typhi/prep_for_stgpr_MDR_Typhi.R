@@ -4,8 +4,8 @@
 library(foreign)
 rm(list = ls())
 
-sSA_file = 'MDR_Typhi_final_sSA'
-Asia_file = 'MDR_Typhi_final_Asia'
+sSA_file = 'MDR_Typhi_300421_sSA'
+Asia_file = 'MDR_Typhi_300421_Asia'
 
 sSA_file <- read.csv(paste0('/ihme/homes/annieb6/AMR/typhi_paratyphi/stackers/', sSA_file, '/custom_stage1_df.csv'))
 Asia_file <- read.csv(paste0('/ihme/homes/annieb6/AMR/typhi_paratyphi/stackers/', Asia_file, '/custom_stage1_df.csv'))
@@ -18,7 +18,7 @@ Asia_file <- Asia_file[!(Asia_file$location_id %in% sSA_file$location_id),]
 mydata <- rbind(sSA_file, Asia_file)
 summary(mydata$cv_custom_stage_1)
 
-write.csv(mydata, paste0('/ihme/homes/annieb6/AMR/typhi_paratyphi/stackers/custom_stage1_final_MDR_Typhi.csv'), row.names = F)
+write.csv(mydata, paste0('/ihme/homes/annieb6/AMR/typhi_paratyphi/stackers/custom_stage1_MDR_Typhi_300421.csv'), row.names = F)
 
 #~~~~~#
 # END #

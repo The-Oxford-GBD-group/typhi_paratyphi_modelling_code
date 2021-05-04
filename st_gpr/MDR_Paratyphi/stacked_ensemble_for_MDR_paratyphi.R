@@ -17,12 +17,12 @@ library(boot)
 #~~~~~~~~~~~~~#
 #set output directory
 # model_date = format(Sys.Date(), "%Y_%m_%d")
-model_date <- 'MDR_Paratyphi_final'
+model_date <- 'MDR_Paratyphi_300412'
 outputdir <-  paste0('/ihme/homes/annieb6/AMR/typhi_paratyphi/stackers/', model_date, '/')
 dir.create(outputdir, showWarnings = F, recursive = T)
 
 #Load data
-mydata <- data.table(read.csv('/ihme/homes/annieb6/AMR/typhi_paratyphi/datasets/MDR_paratyphi_outliered.csv', stringsAsFactors = F))
+mydata <- data.table(read.csv('/ihme/homes/annieb6/AMR/typhi_paratyphi/datasets/MDR_paratyphi_outliered_300421.csv', stringsAsFactors = F))
 mydata <- mydata[mydata$is_outlier == 0,]
 mydata <- mydata[mydata$sample_size>=5,] 
 #specify child models to include
