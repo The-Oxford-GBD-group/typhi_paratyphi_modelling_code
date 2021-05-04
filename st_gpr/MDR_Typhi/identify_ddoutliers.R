@@ -9,7 +9,6 @@ mydata<-read.csv('Z:/AMR/Pathogens/typhi_paratyphi/model_prep/clean_data/stgpr_f
 covs <- read.csv('Z:/AMR/Pathogens/typhi_paratyphi/covariates/cleaned_covs.csv')
 
 mydata <- merge(mydata, covs)
-colnames(mydata)[colnames(mydata)=='val'] <- 'p_resistant'
 
 mydata$ln_ddd_per_1000_raw <- log(mydata$ddd_per_1000)
 
@@ -18,8 +17,8 @@ mydata[,15:73] <- apply(mydata[,15:73],2,function(x) rescale(x))
 mydata$year.rescaled<- rescale(mydata$year_id)
 mydata$super_region_rescaled <- rescale(as.numeric(as.factor(mydata$super_region)))
 mydata$region_rescaled <- rescale(as.numeric(as.factor(mydata$region)))
-mydata$location_id <-  rescale(mydata$location_id)
-df <- mydata[c('p_resistant',
+mydata$location_id_rescaled <-  rescale(mydata$location_id)
+df <- mydata[c('val',
                'year.rescaled',
                'ln_ddd_per_1000_raw',
                'cv_hib3_coverage_prop',
@@ -32,7 +31,7 @@ df <- mydata[c('p_resistant',
                "cv_hiv",
                'cv_tfr',
                'cv_he_cap',
-               'location_id')]
+               'location_id_rescaled')]
 
 df <- df[complete.cases(df),]
 rownames(df) <- c()
