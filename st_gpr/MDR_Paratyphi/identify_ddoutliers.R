@@ -3,7 +3,7 @@ rm(list = ls())
 library("DDoutlier")
 library("scales")
 library("ggrepel")
-
+library(data.table)
 #Read in the mydata
 mydata<-read.csv('Z:/AMR/Pathogens/typhi_paratyphi/model_prep/clean_data/stgpr_files/MDR_paratyphi.csv')
 covs <- read.csv('Z:/AMR/Pathogens/typhi_paratyphi/covariates/cleaned_covs.csv')

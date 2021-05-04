@@ -3,6 +3,7 @@ rm(list = ls())
 library("DDoutlier")
 library("scales")
 library("ggrepel")
+library(data.table)
 
 #Read in the mydata
 mydata<-read.csv('Z:/AMR/Pathogens/typhi_paratyphi/model_prep/clean_data/stgpr_files/FQNS_typhi.csv')
@@ -27,8 +28,8 @@ df <- df[complete.cases(df),]
 rownames(df) <- c()
 
 ##Natural Neighbor (NAN) algorithm to return the self-adaptive neighborhood
-K <- NAN(df, NaN_Edges=FALSE)$r
-
+# K <- NAN(df, NaN_Edges=FALSE)$r
+K = 13
 ##Influenced Outlierness (INFLO) algorithm: greater INFLO = greater outlierness
 outlier_score_INFLO <- INFLO(dataset=df, k=K)
 
@@ -48,4 +49,4 @@ pp_country <- pp_country[points <=2,]
 mydata$is_outlier[mydata$country %in% pp_country$country] <- 0
 
 #save the data
-write.csv(mydata, 'Z:/AMR/Pathogens/typhi_paratyphi/model_prep/clean_data/stgpr_files/FQNS_typhi_outliered_300421.csv', row.names = F)
+write.csv(mydata, 'Z:/AMR/Pathogens/typhi_paratyphi/model_prep/clean_data/stgpr_files/FQNS_typhi_outliered_040521.csv', row.names = F)
