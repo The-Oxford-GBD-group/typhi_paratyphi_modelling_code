@@ -18,36 +18,26 @@
   #~~~~~~~~~~~~~#
   #set output directory
   model_date = format(Sys.Date(), "%Y_%m_%d")
-  model_date <- 'outliered_v2'
-  region <- 'Asia'
-  model_date <- paste0(model_date, '_', region)
+  # model_date = 'check_child_models'
   set.seed(5432)
   
-  outputdir <-  paste0('Z:/AMR/Pathogens/typhi_paratyphi/model_results/CAR_INLA/admin1/MDR_Typhi/', model_date)
+  outputdir <-  paste0('Z:/AMR/Pathogens/typhi_paratyphi/model_results/stacked_ensemble/FQNS_Paratyphi/', model_date)
   dir.create(outputdir, showWarnings = F, recursive = T)
   
   #Load data
-  mydata <- fread('Z:/AMR/Pathogens/typhi_paratyphi/model_prep/admin1_ST_CAR/MDR_Typhi_outliered_v2.csv')
+  mydata <- fread('Z:/AMR/Pathogens/typhi_paratyphi/model_prep/clean_data/outliered/FQNS_Paratyphi_outliered.csv')
+  mydata <- mydata[mydata$is_outlier ==0,]
   covs <- read.csv('Z:/AMR/Covariates/modelling_covariates/admin1_typhi/all_admin1_typhi_covs.csv')
 
-  colnames(mydata)[colnames(mydata) == 'year'] <- 'year_id'
   colnames(covs)[colnames(covs) == 'year'] <- 'year_id'
+  #restrict to south and southeast Asia
+  locs <- read.dbf('Z:/AMR/Shapefiles/GBD2019/GBD2019_analysis_final_loc_set_22.dbf')
+  covs <- covs[covs$COUNTRY_ID %in% locs$ihme_lc_id[locs$spr_reg_id == 4 | locs$spr_reg_id == 158],]
   
   #specify child models to include
   # can be xgboost (BRT), gam, ridge, lasso, enet, nnet (neural nets), rf (random forest), cubist
-  
-  if(region == 'sSA'){
-    mydata <- mydata[!is.na(mydata$adj_id_sSA),]
-    covs <- covs[!is.na(covs$adj_id_sSA),]
-    child_models <- c('gam', 'xgboost', 'ridge')
-  }else if (region == 'Asia'){
-    mydata <- mydata[!is.na(mydata$adj_id_Asia),]
-    covs <- covs[!is.na(covs$adj_id_Asia),]
-    child_models <- c('gam', 'xgboost', 'ridge')
-  } else{
-    child_models <- c('xgboost', 'gam', 'lasso')
-  }
-  
+  child_models <- c('gam','nnet')
+
   #specify the stacker you want to use out of CWM (constrained weighted mean, from quadratic programming), 
   # RWM (weighted mean based on R-sqr) GBM, GLM, nnet
   stacker <- 'RWM'
@@ -66,71 +56,21 @@
   #Include year in your models?
   include_year <-  TRUE
   
-  # # lag the covariates, either 2 or 5 years
-  # extra <- covs[covs$year_id ==1990,]
-  # extra2 <- covs[covs$year_id ==1990,]
-  # # extra3 <- covs[covs$year_id ==1990,]
-  # # extra4 <- covs[covs$year_id ==1990,]
-  # # extra5 <- covs[covs$year_id ==1990,]
-  # extra2$year_id <- 1991
-  # # extra3$year_id <- 1992
-  # # extra4$year_id <- 1993
-  # # extra5$year_id <- 1994
-  # covs$year_id <- covs$year_id+2
-  # # covs <- rbindlist(list(covs, extra, extra2, extra3, extra4, extra5))
-  # covs <- rbindlist(list(covs, extra, extra2))
-  # covs <-  data.frame(covs)
-
   #specify holdout method, currently can use random or country
   holdout_method <- 'random'
   
   #specify covariates you want to include in the model
   #the stackers will essentially autoselect which ones to incude
-  if(region == 'sSA'){
-    covs_to_include <-  c('sanitation_prop',
-                          'water_prop',
-                          'hdi',
-                          'pop_density',
-                          'rqe',
-                          'he_cap',
-                          'J01C',
-                          'intest_typhoid',
-                          'physicians_pc',
-                          'ddd_per_1000')
-    
-  } else if (region == 'Asia'){
-    
-    covs_to_include <- c('crutstmp',
-                         'nexndvi',
-                         'distriverslakes',
-                         'intest_typhoid',
-                         'physicians_pc',
-                         'hospital_beds_per1000',
-                         'anc4_coverage_prop',
-                         'sanitation_prop'
+  covs_to_include <- c("water_prop",
+                        'vae',
+                       'ddd_per_1000'
     )
-  }else{
-    covs_to_include <- c('crutstmp',
-                         'fertility',
-                         'hib3_cov',
-                         'sanitation_prop',
-                         'distriverslakes',
-                         'rqe',
-                         'universal_health_coverage',
-                         'J01C',
-                         'physicians_pc',
-                         'hospital_beds_per1000',
-                         'anc4_coverage_prop'
-    )
-  }
-  
-  
 
   
   #specify what you columns are
-  p <- 'p'          #the proportion of your indicator successes
-  n <- 'n'          #the number of your indicator successes
-  d <- 'd'          #the denoinator (sample size)
+  p <- 'val'          #the proportion of your indicator successes
+  n <- 'number_resistant'          #the number of your indicator successes
+  d <- 'sample_size'          #the denoinator (sample size)
   w <- NULL       #the weights to use
   
   #Specify which years you are modelling for
@@ -169,15 +109,7 @@
     }
   }
   
-  #restrict covs to those included
-  if(region == 'sSA'){
-    covs <- covs[colnames(covs) %in% covs_to_include | colnames(covs)=='adj_id_sSA' | colnames(covs)=='adj_id' | colnames(covs) =='year_id']
-    
-  }else if(region == 'Asia'){
-    covs <- covs[colnames(covs) %in% covs_to_include | colnames(covs)=='adj_id_Asia' | colnames(covs)=='adj_id' | colnames(covs) =='year_id']  
-  }else{
   covs <- covs[colnames(covs) %in% covs_to_include | colnames(covs)=='adj_id' | colnames(covs) =='year_id']
-  }
   covs <- data.table(covs)
   covs <- na.omit(covs)
   
@@ -497,14 +429,14 @@
       vars <- as.matrix(mydata[fold_id != i, covs_to_include, with = F])
       colnames(vars) <- covs_to_include
       
-      if('ridge' %in% child_models){baby_ridge = glmnet(x = vars , y= response, family = family, lambda = 0.005, alpha = 0, weights = mydata$w[mydata$fold_id!=i])}
+      if('ridge' %in% child_models){baby_ridge = glmnet(x = vars , y= response, family = family, lambda = cv_lambda0$lambda.min, alpha = 0, weights = mydata$w[mydata$fold_id!=i])}
       if('lasso' %in% child_models){baby_lasso = glmnet(x = vars , y= response, family = family, lambda = 0.005, alpha = 1, weights = mydata$w[mydata$fold_id!=i])}
       if('enet' %in% child_models){baby_enet = glmnet(x = vars , y= response, family = family, lambda = 0.005, alpha = 0.5, weights = mydata$w[mydata$fold_id!=i])}
       
       new_vars <- as.matrix(mydata[fold_id == i, covs_to_include, with = F])
       
       #fill in the data
-      if('ridge' %in% child_models){mydata[fold_id==i,'ridge_cv_pred' := predict(baby_ridge,newx = new_vars, s = 0.005, type = 'response')]}
+      if('ridge' %in% child_models){mydata[fold_id==i,'ridge_cv_pred' := predict(baby_ridge,newx = new_vars, s = cv_lambda0$lambda.min, type = 'response')]}
       if('lasso' %in% child_models){mydata[fold_id==i,'lasso_cv_pred' := predict(baby_lasso,newx = new_vars, s = 0.005, type = 'response')]}
       if('enet' %in% child_models){mydata[fold_id==i,'enet_cv_pred' := predict(baby_enet,newx = new_vars, s = 0.005, type = 'response')]}
     }
@@ -1163,14 +1095,15 @@
   colnames(covs)[colnames(covs) == 'year_id'] <- 'year'
   covs <- merge(covs, pops, by = c('adj_id', 'year'))
   
-  agg_preds <- covs[,.(xgboost = weighted.mean(xgboost, population),
+  agg_preds <- covs[,.(
+                       # xgboost = weighted.mean(xgboost, population),
                        # enet = weighted.mean(enet, population),
-                       ridge = weighted.mean(ridge, population),
+                       # ridge = weighted.mean(ridge, population),
                        gam = weighted.mean(gam, population),
                        # lasso = weighted.mean(lasso, population)),
                        # rf = weighted.mean(rf, population),
-                       # nnet = weighted.mean(nnet, population),
-                       # cubist = weighted.mean(cubist, population)),
+                       nnet = weighted.mean(nnet, population),
+                       # cubist = weighted.mean(cubist, population),
                        cv_custom_stage_1 = weighted.mean(cv_custom_stage_1, population)),
                     by = c('COUNTRY_ID', 'year')]
   
@@ -1180,21 +1113,13 @@
   locs <- locs[c('ihme_lc_id', 'spr_reg_id')]
   locs$ihme_lc_id <- as.character(locs$ihme_lc_id)
   
-  if(region == 'sSA'){
-    locs <- locs[locs$spr_reg_id == 166,]
-  }else if(region == 'Asia') {
-    locs <- locs[locs$spr_reg_id == 137 |
-                   locs$spr_reg_id == 158 |
-                   locs$spr_reg_id == 4,]
-  } else{}
-
   agg_preds <-  merge(agg_preds, locs, by.x = 'COUNTRY_ID', by.y = 'ihme_lc_id')
   
   #merge on the data points
-  input <- mydata[c('iso3', 'year_id', 'p')]
+  input <- mydata[c('country', 'year_id', 'p', 'adj_id')]
   
   agg_preds <- merge(agg_preds, input, 
-                     by.x = c('COUNTRY_ID', 'year'), by.y = c('iso3', 'year_id'),
+                     by.x = c('COUNTRY_ID', 'year'), by.y = c('country', 'year_id'),
                      all.x = T, all.y = T, allow.cartesian = T)
   
   #reshape long
@@ -1224,9 +1149,8 @@
 locs <- fread("Z:/AMR/Covariates/modelling_covariates/admin1_typhi/all_admin1_typhi_covs.csv")
 locs <- unique(locs[,.(COUNTRY_ID, adj_id)])
   
-preds <- merge(covs, locs, by = 'adj_id')
-preds <- merge(preds, input, 
-                   by.x = c('COUNTRY_ID', 'year'), by.y = c('iso3', 'year_id'),
+preds <- merge(covs, input, 
+                   by.x = c('COUNTRY_ID', 'year', 'adj_id'), by.y = c('country', 'year_id', 'adj_id'),
                    all.x = T, all.y = T, allow.cartesian = T)
 
 
@@ -1252,3 +1176,4 @@ for(i in 1:length(unique(preds$COUNTRY_ID))){
     )
 }
 dev.off()
+

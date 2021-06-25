@@ -146,22 +146,25 @@ for(i in 1:length(names(all_covs)[3:49])){
 # Associations between data and covs #####
 # merge covariates onto the data
 rm(list = ls())
-mydata <- fread('Z:/AMR/Pathogens/typhi_paratyphi/model_prep/admin1_ST_CAR/MDR_Typhi.csv')
+mydata <- fread('Z:/AMR/Pathogens/typhi_paratyphi/model_prep/clean_data/outliered/FQNS_Paratyphi_outliered.csv')
 all_covs <- fread('Z:/AMR/Covariates/modelling_covariates/admin1_typhi/all_admin1_typhi_covs.csv')
-mydata <- merge(mydata, all_covs, by.x = c('adm1', 'year'), by.y = c('admin_code', 'year'))
+names(mydata)[names(mydata)=='year_id'] <- 'year'
+names(all_covs)[names(mydata)=="COUNTRY_ID"] <- 'country'
+mydata <- mydata[is_outlier ==0,]
+mydata <- merge(mydata, all_covs)
 rm(all_covs)
 
 
 # reshape long
 long_covs <- melt(data = mydata,
-                  id.vars = c('adm1', 'year', 'p', 'super_region'),
-                  measure.vars = 12:57,
+                  id.vars = c('adj_id', 'year', 'val', 'super_region'),
+                  measure.vars = 24:69,
                   variable.name = 'covariate',
                   value.name = 'cov_val')
 
 
 #create table of correlations between data and covariates
-correlations <- long_covs[,.(r = round(cor(p[!is.na(p)&!is.na(cov_val)], cov_val[!is.na(p)&!is.na(cov_val)]),4)),
+correlations <- long_covs[,.(r = round(cor(val[!is.na(val)&!is.na(cov_val)], cov_val[!is.na(val)&!is.na(cov_val)]),4)),
                           by = c('covariate')]
 
 correlations$direction <- NA
@@ -169,10 +172,10 @@ correlations$direction[correlations$r <0] <- "-"
 correlations$direction[correlations$r >0] <- "+"
 correlations$r2 <- correlations$r^2
 correlations$r <- NULL
-write.csv(correlations, 'Z:/AMR/Pathogens/typhi_paratyphi/model_prep/admin1_ST_CAR/MDR_Typhi_covs_correlations.csv', row.names = F)
+write.csv(correlations, 'Z:/AMR/Pathogens/typhi_paratyphi/model_prep/covariate_selection/FQNS_Paratyphi_correlations.csv', row.names = F)
 
 #create table of correlations between data and covariates
-correlations <- long_covs[,.(r = round(cor(p[!is.na(p)&!is.na(cov_val) & super_region == 'Sub-Saharan Africa'], cov_val[!is.na(p)&!is.na(cov_val)& super_region == 'Sub-Saharan Africa']),4)),
+correlations <- long_covs[,.(r = round(cor(val[!is.na(val)&!is.na(cov_val) & super_region == 'Sub-Saharan Africa'], cov_val[!is.na(val)&!is.na(cov_val)& super_region == 'Sub-Saharan Africa']),4)),
                           by = c('covariate')]
 
 correlations$direction <- NA
@@ -180,9 +183,9 @@ correlations$direction[correlations$r <0] <- "-"
 correlations$direction[correlations$r >0] <- "+"
 correlations$r2 <- correlations$r^2
 correlations$r <- NULL
-write.csv(correlations, 'Z:/AMR/Pathogens/typhi_paratyphi/model_prep/admin1_ST_CAR/MDR_Typhi_covs_correlations_Africa.csv', row.names = F)
+write.csv(correlations, 'Z:/AMR/Pathogens/typhi_paratyphi/model_prep/covariate_selection/FQNS_Typhi_correlations_Africa.csv', row.names = F)
 
-correlations <- long_covs[,.(r = round(cor(p[!is.na(p)&!is.na(cov_val) & super_region != 'Sub-Saharan Africa'], cov_val[!is.na(p)&!is.na(cov_val)& super_region != 'Sub-Saharan Africa']),4)),
+correlations <- long_covs[,.(r = round(cor(val[!is.na(val)&!is.na(cov_val) & super_region != 'Sub-Saharan Africa'], cov_val[!is.na(val)&!is.na(cov_val)& super_region != 'Sub-Saharan Africa']),4)),
                           by = c('covariate')]
 
 correlations$direction <- NA
@@ -190,33 +193,33 @@ correlations$direction[correlations$r <0] <- "-"
 correlations$direction[correlations$r >0] <- "+"
 correlations$r2 <- correlations$r^2
 correlations$r <- NULL
-write.csv(correlations, 'Z:/AMR/Pathogens/typhi_paratyphi/model_prep/admin1_ST_CAR/MDR_Typhi_covs_correlations_Asia.csv', row.names = F)
+write.csv(correlations, 'Z:/AMR/Pathogens/typhi_paratyphi/model_prep/covariate_selection/FQNS_Typhi_correlations_Asia.csv', row.names = F)
 
 # plot out covs
 #1. Standard covs vs standard data
-png("Z:/AMR/Pathogens/typhi_paratyphi/model_prep/admin1_ST_CAR/MDR_Typhi_vs_covs.png",
+png("Z:/AMR/Pathogens/typhi_paratyphi/model_prep/covariate_selection/FQNS_Paratyphi_vs_covs.png",
     height = 30,
     width = 30, units = 'cm', res = 150)
-ggplot(long_covs, aes(x = p, y = cov_val))+
+ggplot(long_covs, aes(x = val, y = cov_val))+
   geom_point()+
   facet_wrap(~covariate, ncol = 5, scales = 'free')+
   labs(x = 'Proportion resistant', y = 'Covariate value')
 dev.off() 
 
 #plot for Africa and Asia seperately
-png("Z:/AMR/Pathogens/typhi_paratyphi/model_prep/admin1_ST_CAR/MDR_Typhi_vs_covs+africa.png",
+png("Z:/AMR/Pathogens/typhi_paratyphi/model_prep/covariate_selection/FQNS_Typhi_vs_covs_Africa.png",
     height = 30,
     width = 30, units = 'cm', res = 150)
-ggplot(long_covs[long_covs$super_region == 'Sub-Saharan Africa',], aes(x = p, y = cov_val))+
+ggplot(long_covs[long_covs$super_region == 'Sub-Saharan Africa',], aes(x = val, y = cov_val))+
   geom_point()+
   facet_wrap(~covariate, ncol = 5, scales = 'free')+
   labs(x = 'Proportion resistant', y = 'Covariate value')
 dev.off() 
 
-png("Z:/AMR/Pathogens/typhi_paratyphi/model_prep/admin1_ST_CAR/MDR_Typhi_vs_covs+asia.png",
+png("Z:/AMR/Pathogens/typhi_paratyphi/model_prep/covariate_selection/FQNS_Typhi_vs_covs_asia.png",
     height = 30,
     width = 30, units = 'cm', res = 150)
-ggplot(long_covs[long_covs$super_region != 'Sub-Saharan Africa',], aes(x = p, y = cov_val))+
+ggplot(long_covs[long_covs$super_region != 'Sub-Saharan Africa',], aes(x = val, y = cov_val))+
   geom_point()+
   facet_wrap(~covariate, ncol = 5, scales = 'free')+
   labs(x = 'Proportion resistant', y = 'Covariate value')
@@ -233,12 +236,12 @@ mydata[,fold_id := cut(seq(1,nrow(mydata)),breaks=5,labels=FALSE)]
 ## add a row id column
 mydata[, a_rowid := seq(1:nrow(mydata))]
 
-response <- cbind(failures   = mydata$d - mydata$n, 
-                  successes = mydata$n)
+response <- cbind(failures   = mydata$sample_size - mydata$number_resistant, 
+                  successes = mydata$number_resistant)
 
 #define variables to include (as a matrix)
-vars <- as.matrix(scale(mydata[, c(12:24, 26:56)]))
-colnames(vars) <- names(mydata[, c(12:24, 26:56)])
+vars <- as.matrix(scale(mydata[, c(23:35, 37:69)]))
+colnames(vars) <- names(mydata[, c(23:35, 37:69)])
 
 mydata$w <- 1
 
@@ -250,7 +253,7 @@ cv_lasso$lambda.1se
 coef(cv_lasso, s = "lambda.1se")
 
 #trial other lambdas to get approx 10 most influential covariates
-coef(cv_lasso, s = 0.04)
+coef(cv_lasso, s = 0.005)
 
 # Just for Africa
 #define variables to include (as a matrix)
