@@ -15,8 +15,8 @@ RMSE = function(m, o){
   sqrt(mean((m - o)^2))
 }
 
-setwd("Z:/AMR/Pathogens/typhi_paratyphi")
-model_name <- 'MDR_Typhi/22_more_fixed_locs' 
+setwd("C:/Users/Annie/Documents/GRAM/typhi_paratyphi")
+model_name <- 'MDR_Typhi/23_updated_data' 
 dir.create(paste0('model_results/bugs/admin1/', model_name), showWarnings = F, recursive = T)
 
 ##Define the model in BUGS language ####
@@ -25,7 +25,7 @@ cat("
 MODEL 
 { 
 
-    for(i in 1:395){
+    for(i in 1:S){
       h.2[i]~dnorm(0,tau.h2)
   }
 
@@ -112,17 +112,17 @@ sink()
 
 # Setup the data ####
 #get the input data
-mydata <- fread("Z:/AMR/Pathogens/typhi_paratyphi/model_prep/clean_data/outliered/MDR_Typhi_outliered.csv")
+mydata <- fread("model_prep/clean_data/outliered/MDR_Typhi_outliered.csv")
 mydata <- mydata[mydata$is_outlier == 0,]
 mydata <- mydata[,.(adj_id, adj_id_sSA, adj_id_Asia, country, year = year_id, source_id =nid, 
                     number_resistant, sample_size, val)]
 
 #get covs (to have a template for all country-years)
 # covs <- read.csv("Z:/AMR/Pathogens/typhi_paratyphi/model_results/CAR_INLA/admin1/MDR_Typhi/2021_04_23_sSA/child_model_preds.csv")
-covs_ssa <- read.csv("Z:/AMR/Pathogens/typhi_paratyphi/model_results/stacked_ensemble/MDR_Typhi/2021_05_14_sSA/custom_stage1_df.csv")
-covs_asia <- read.csv("Z:/AMR/Pathogens/typhi_paratyphi/model_results/stacked_ensemble/MDR_Typhi/2021_05_14_Asia/custom_stage1_df.csv")
+covs_ssa <- read.csv("model_results/stacked_ensemble/MDR_Typhi/2021_06_25_sSA/custom_stage1_df.csv")
+covs_asia <- read.csv("model_results/stacked_ensemble/MDR_Typhi/2021_06_25_Asia/custom_stage1_df.csv")
 
-all_covs <- read.csv("Z:/AMR/Covariates/modelling_covariates/admin1_typhi/all_admin1_typhi_covs.csv")
+all_covs <- read.csv("covariates/all_admin1_typhi_covs.csv")
 # all_covs <- unique(all_covs[c('adj_id', 'adj_id_sSA', 'COUNTRY_ID')])
 # covs <- merge(covs, all_covs, all.y = F)
 
@@ -145,12 +145,12 @@ mydata <- merge(covs, mydata)
 # This will mean the data for fitting is on top and prediction on the bottom
 mydata <- rbind.fill(mydata, covs)
 
-#Make year id 1:29
+#Make year id 1:30
 mydata$year <- mydata$year-1989
 
 #fill in the missing values (made it work with the aggregated file)
 mydata$source_id <- as.numeric(as.factor(mydata$source_id))
-mydata$source_id[is.na(mydata$source_id)] <- 395
+mydata$source_id[is.na(mydata$source_id)] <- max(mydata$source_id[!is.na(mydata$source_id)])+1
 mydata$sample_size[is.na(mydata$sample_size)] <- 50
 
 #set up adjacency matrix info ####
@@ -200,7 +200,7 @@ num <- c(0,3,4,6,2,5,3,6,4,8,5,0,7,2,6,6,6,4,6,6,6,8,3,4,8,4,2,4,7,0,2,7,26,14,
 sumNumNeigh<-sum(num)
 
 #specify data and adjacency matrix ####
-bugs.data <- list(N=1474,T=29,nTot=length(mydata$number_resistant),
+bugs.data <- list(N=1474,T=30,S=max(mydata$source_id), nTot=length(mydata$number_resistant),
                   number_resistant=round(mydata$number_resistant,0),sample_size=mydata$sample_size,
                   adj_id = mydata$adj_id, year = mydata$year, source_num = mydata$source_id,
                   custom_stg1 = mydata$cv_custom_stage_1,
@@ -1698,7 +1698,7 @@ nburnin <- 5000
 nthin <- 10
 
 ##Locate WinBUGS by setting path below specifically for the computer used.
-bugs.dir<-"C:/Users/annieb/Documents/WinBUGS14"
+bugs.dir<-"C:/Users/Annie/Documents/WinBUGS14"
 
 # Do the MCMC stuff from R
 out <- bugs(data = bugs.data, inits = inits, parameters.to.save = parameters, model.file = "typhi.bug", n.chains = nchains, n.thin=nthin, n.iter=niter, n.burnin=nburnin, debug=TRUE, bugs.directory=bugs.dir)
@@ -1765,8 +1765,8 @@ for(i in 1:length(unique(results$COUNTRY_ID))){
 dev.off()
 
 # Plot map ####
-admin0 <- st_read('c:/Users/annieb/Desktop/admin2013_0.shp')
-typhi <- st_read('Z:/AMR/Shapefiles/typhi_endemic_admin1.shp')
+admin0 <- st_read('C:/Users/Annie/Documents/GRAM/shapefiles/admin2013_0.shp')
+typhi <- st_read('C:/Users/Annie/Documents/GRAM/shapefiles/typhi_endemic_admin1.shp')
 names(typhi) <- c("COUNTRY_ID", "NAME", "GAUL_CODE", "ADMN_LEVEL",  "PARENT_ID",  "spr_rg_id", 
                   "adj_id","adj_sSA", "adj_id_Asia",  "geometry")
 

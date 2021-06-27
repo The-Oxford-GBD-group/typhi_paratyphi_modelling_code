@@ -17,20 +17,21 @@
   # i. Setup ####
   #~~~~~~~~~~~~~#
   #set output directory
+  setwd("C:/Users/Annie/Documents/GRAM/typhi_paratyphi")
   model_date = format(Sys.Date(), "%Y_%m_%d")
   set.seed(5432)
   
-  outputdir <-  paste0('Z:/AMR/Pathogens/typhi_paratyphi/model_results/stacked_ensemble/MDR_Paratyphi/', model_date)
+  outputdir <-  paste0('model_results/stacked_ensemble/MDR_Paratyphi/', model_date)
   dir.create(outputdir, showWarnings = F, recursive = T)
   
   #Load data
-  mydata <- fread('Z:/AMR/Pathogens/typhi_paratyphi/model_prep/clean_data/outliered/MDR_Paratyphi_outliered.csv')
+  mydata <- fread('model_prep/clean_data/outliered/MDR_Paratyphi_outliered.csv')
   mydata <- mydata[mydata$is_outlier ==0,]
-  covs <- read.csv('Z:/AMR/Covariates/modelling_covariates/admin1_typhi/all_admin1_typhi_covs.csv')
+  covs <- read.csv('covariates//all_admin1_typhi_covs.csv')
 
   colnames(covs)[colnames(covs) == 'year'] <- 'year_id'
   #restrict to south and southeast Asia
-  locs <- read.dbf('Z:/AMR/Shapefiles/GBD2019/GBD2019_analysis_final_loc_set_22.dbf')
+  locs <- read.dbf("C:/Users/Annie/Documents/GRAM/shapefiles/GBD2019_analysis_final.dbf")
   covs <- covs[covs$COUNTRY_ID %in% locs$ihme_lc_id[locs$spr_reg_id == 4 | locs$spr_reg_id == 158],]
   
   #specify child models to include
@@ -125,7 +126,7 @@
   }
   
   #merge covs onto data
-  mydata <- merge(mydata, covs, by = c('adj_id', 'year_id'))
+  mydata <- merge(mydata, covs)
   mydata <- data.table(mydata)
   
   ## remove NAs
@@ -798,11 +799,6 @@
   write.csv(mydata, paste0(outputdir, '/fitted_child_models.csv'), row.names = F)
   write.csv(covs, paste0(outputdir, '/child_model_preds.csv'), row.names = F)
   
-  # mydata <- read.csv(paste0(outputdir, '/fitted_child_models.csv'), stringsAsFactors =  F)
-  # covs <- read.csv(paste0(outputdir, '/child_model_preds.csv'), stringsAsFactors = F)
-  # mydata <- data.table(mydata)
-  # covs <- data.table(covs)
-  
   #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
   # Combined the child model estimates ####
   #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
@@ -1085,9 +1081,9 @@
   # Plot the results ####
   #~~~~~~~~~~~~~~~~~~~~~#
   #aggregate up to the national level and plot
-  pops <- fread('Z:/AMR/Covariates/modelling_covariates/admin1_typhi/annual_covs_adm1.csv')
+  pops <- fread('covariates//annual_covs_adm1.csv')
   pops <- pops[,.(admin_code, year, population)]
-  locs <- fread('Z:/AMR/Covariates/modelling_covariates/admin1_typhi/all_admin1_typhi_covs.csv')
+  locs <- fread('covariates/all_admin1_typhi_covs.csv')
   locs <- locs[,.(COUNTRY_ID, admin_code, adj_id)]
   locs <- unique(locs)
   pops <- merge(pops, locs, by = 'admin_code')
@@ -1096,18 +1092,13 @@
   covs <- merge(covs, pops, by = c('adj_id', 'year'))
   
   agg_preds <- covs[,.(xgboost = weighted.mean(xgboost, population),
-                       # enet = weighted.mean(enet, population),
                        ridge = weighted.mean(ridge, population),
                        gam = weighted.mean(gam, population),
-                       # lasso = weighted.mean(lasso, population)),
-                       # rf = weighted.mean(rf, population),
-                       # nnet = weighted.mean(nnet, population),
-                       # cubist = weighted.mean(cubist, population)),
                        cv_custom_stage_1 = weighted.mean(cv_custom_stage_1, population)),
                     by = c('COUNTRY_ID', 'year')]
   
   #merge on regions
-  locs <- read.dbf('Z:/AMR/Shapefiles/GBD2019/GBD2019_analysis_final_loc_set_22.dbf')
+  locs <- read.dbf("C:/Users/Annie/Documents/GRAM/shapefiles/GBD2019_analysis_final.dbf")
   locs <- locs[locs$level == 3,]
   locs <- locs[c('ihme_lc_id', 'spr_reg_id')]
   locs$ihme_lc_id <- as.character(locs$ihme_lc_id)
@@ -1145,7 +1136,7 @@
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
 #Plot subnational results ####
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-locs <- fread("Z:/AMR/Covariates/modelling_covariates/admin1_typhi/all_admin1_typhi_covs.csv")
+locs <- fread("covariates/all_admin1_typhi_covs.csv")
 locs <- unique(locs[,.(COUNTRY_ID, adj_id)])
   
 preds <- merge(covs, input, 
