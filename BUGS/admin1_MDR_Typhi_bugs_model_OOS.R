@@ -16,9 +16,10 @@ RMSE = function(m, o){
 }
 
 setwd("C:/Users/Annie/Documents/GRAM/typhi_paratyphi")
-model_name <- 'FQNS_Typhi/link_IDN_PHL' 
+model_name <- 'MDR_Typhi/holdouts' 
 dir.create(paste0('model_results/bugs/admin1/', model_name), showWarnings = F, recursive = T)
-
+n_holdouts = 5
+stackers_date = '2021_07_06'
 ##Define the model in BUGS language ####
 sink("typhi.bug")
 cat("
@@ -108,60 +109,63 @@ b[i]~dnorm(0,0.1)
 }
 # end model
 ", fill=TRUE)
-sink()
+sink() 
 
 # Setup the data ####
 #get the input data
-mydata <- fread("model_prep/clean_data/outliered/FQNS_Typhi_outliered.csv")
-mydata <- mydata[mydata$is_outlier == 0,]
-mydata <- mydata[,.(adj_id, adj_id_sSA, adj_id_Asia, country, year = year_id, source_id =nid, 
-                    number_resistant, sample_size, val)]
+master_data_sSA <- fread(paste0("model_results/stacked_ensemble/MDR_Typhi/holdouts/", stackers_date, "/sSA/master_data.csv"))
+master_data_Asia <- fread(paste0("model_results/stacked_ensemble/MDR_Typhi/holdouts/", stackers_date, "/Asia/master_data.csv"))
+master_data <- rbind(master_data_sSA[,.(adj_id, adj_id_sSA, adj_id_Asia, country, year = year_id, source_id =nid, 
+                                        number_resistant = n, sample_size = d, val = p, master_fold_id)],
+                     master_data_Asia[,.(adj_id, adj_id_sSA, adj_id_Asia, country, year = year_id, source_id =nid, 
+                                         number_resistant = n, sample_size = d, val = p, master_fold_id)])
 
-#remove additional outliers
-mydata <- mydata[!(mydata$source_id == 870 & mydata$adj_id == 854 & mydata$year == 2006),] # this datapoint is for half of the year, only has 10 isolates and is extremely different to the other years of the study
-mydata$number_resistant[mydata$source_id == 1698 & mydata$adj_id == 869 & mydata$year == 2004] <- 123 #this ciprofloxacin values appears very off so replacing with the NAR from the study
-mydata$val[mydata$source_id == 1698 & mydata$adj_id == 869 & mydata$year == 2004] <- 0.63
-mydata$variance[mydata$source_id == 1698 & mydata$adj_id == 869 & mydata$year == 2004] <- 0.00119 
-
-
-#get covs (to have a template for all country-years)
-covs <- read.csv("model_results/stacked_ensemble/FQNS_Typhi/2021_06_29/custom_stage1_df.csv")
-
+rm(master_data_Asia, master_data_sSA)
 all_covs <- read.csv("covariates/all_admin1_typhi_covs.csv")
 
-covs <- merge(covs, unique(all_covs[c('adj_id', 'COUNTRY_ID')]))
-
-rm(all_covs)
-
-covs <- covs[order(covs$year_id, covs$adj_id),]
-names(covs)[2] <- 'year'
-#add the covariates onto the data
-mydata <- merge(covs, mydata)
-
-#add the covs data frame onto the data for predictions
-# This will mean the data for fitting is on top and prediction on the bottom
-mydata <- rbind.fill(mydata, covs)
-
+for(i in 1:n_holdouts){
+  mydata <- master_data[master_data$master_fold_id!=i,]
+  #get covs (to have a template for all country-years)
+  covs_ssa <- read.csv(paste0("model_results/stacked_ensemble/MDR_Typhi/holdouts/", stackers_date, "/sSA/custom_stage1_df_h",i, ".csv"))
+  covs_asia <- read.csv(paste0("model_results/stacked_ensemble/MDR_Typhi/holdouts/", stackers_date, "/Asia/custom_stage1_df_h",i, ".csv"))
+  
+  covs_ssa <- merge(covs_ssa, unique(all_covs[c('adj_id', 'COUNTRY_ID')]))
+  covs_asia <- merge(covs_asia, unique(all_covs[c('adj_id', 'COUNTRY_ID')]))
+  
+  covs <- rbind(covs_ssa, covs_asia)
+  
+  rm(covs_ssa, covs_asia)
+  
+  covs <- covs[order(covs$year_id, covs$adj_id),]
+  names(covs)[2] <- 'year'
+  
+  #add the covariates onto the data
+  mydata <- merge(covs, mydata)
+  
+  #add the covs data frame onto the data for predictions
+  # This will mean the data for fitting is on top and prediction on the bottom
+  mydata <- rbind.fill(mydata, covs)
+  
 #Make year id 1:30
 mydata$year <- mydata$year-1989
 
 #Get rid of small island nations
-excl <- c('ASM','COK','FJI','FSM','GUM', 'KIR', 'MHL','MNP','MUS','NIU','NRU','PLW','SLB','TON', 'TUV','VUT','WSM','COM','STP','BRN','KOR')
+excl <- c('ASM','COK','FJI','FSM','GUM','KIR', 'MHL','MNP','MUS','NIU','NRU','PLW','SLB','TON', 'TUV','VUT','WSM','COM','STP','BRN','KOR')
 mydata <- mydata[!(mydata$COUNTRY_ID%in%excl),]
 
 #fill in the missing values (made it work with the aggregated file)
 mydata$source_id <- as.numeric(as.factor(mydata$source_id))
-mydata$source_id[is.na(mydata$source_id)] <- max(mydata$source_id,na.rm=T)+1
+mydata$source_id[is.na(mydata$source_id)] <- max(mydata$source_id[!is.na(mydata$source_id)])+1
 mydata$sample_size[is.na(mydata$sample_size)] <- 50
 
 #set up adjacency matrix info ####
 
 num <- c(0,3,4,6,2,5,3,6,4,8,5,0,7,2,6,6,6,4,6,6,6,8,3,4,8,4,2,4,7,0,2,7,26,14,
-         6,0,0,3,1,1,2,0,0,2,2,0,3,4,2,1,3,1,4,3,2,0,2,3,2,1,3,3,4,4,4,2,4,6,3,
+         6,0,0,3,1,1,2,0,0,2,2,0,2,4,2,1,3,1,4,3,2,0,2,3,2,1,3,3,4,4,4,2,4,6,3,
          3,4,2,3,3,3,3,5,7,7,5,6,7,6,8,5,1,5,2,6,6,3,1,7,6,7,6,6,7,3,5,0,0,5,5,
          8,6,5,5,8,4,6,4,6,8,10,6,4,6,5,5,5,4,5,3,5,4,4,3,0,6,7,4,6,3,5,5,7,3,8,
          6,6,8,6,7,3,6,0,0,4,4,4,5,4,5,4,2,3,3,5,4,1,2,4,6,7,3,2,2,7,4,2,0,0,0,2,
-         2,3,3,2,1,1,2,3,2,1,5,4,3,4,4,1,0,4,7,6,5,5,4,3,0,0,4,0,4,5,0,0,1,4,4,2,
+         2,3,3,2,1,1,2,3,2,1,5,3,3,4,3,0,0,4,7,6,5,5,4,3,0,0,4,0,4,5,0,0,1,4,4,2,
          0,6,4,7,3,5,3,3,5,4,7,4,0,0,1,0,0,0,0,1,0,0,4,4,6,7,8,4,4,7,7,6,3,4,6,5,
          8,9,4,7,3,9,8,5,5,7,5,7,6,8,8,5,4,4,3,6,4,6,3,4,3,4,5,7,4,4,7,7,5,0,3,4,
          6,2,6,7,5,2,4,3,5,4,6,5,7,6,7,5,5,10,5,4,7,6,5,5,5,5,0,6,5,3,5,3,3,4,2,4,
@@ -253,7 +257,7 @@ bugs.data <- list(N=1474,T=30,nTot=length(mydata$number_resistant), S=max(mydata
                     59,67,
                     58,75,
                     
-                    55,58,187,
+                    55,58,
                     66,67,68,76,
                     70,71,
                     67,
@@ -393,11 +397,11 @@ bugs.data <- list(N=1474,T=30,nTot=length(mydata$number_resistant), S=max(mydata
                     186,188,
                     186,
                     183,184,185,187,188,
-                    47,183,186,188,
+                    183,186,188,
                     184,186,187,
                     176,177,178,190,
-                    176,179,189,191,
-                    190,
+                    176,179,189,
+                    
                     
                     194,195,209,210,
                     193,196,199,204,205,209,210,
@@ -1696,13 +1700,13 @@ parameters <- c("beta0","tau.h1","tau.h2","tau.t","tau.w","tau.nu","p")
 nchains <- 1
 niter <- 10000
 nburnin <- 5000
-nthin <- 5
+nthin <- 10
 
 ##Locate WinBUGS by setting path below specifically for the computer used.
 bugs.dir<-"C:/Users/Annie/Documents/WinBUGS14"
 
 # Do the MCMC stuff from R
-out <- bugs(data = bugs.data, inits = inits, parameters.to.save = parameters, model.file = "typhi.bug", n.chains = nchains, n.thin=nthin, n.iter=niter, n.burnin=nburnin, debug=F, bugs.directory=bugs.dir)
+out <- bugs(data = bugs.data, inits = inits, parameters.to.save = parameters, model.file = "typhi.bug", n.chains = nchains, n.thin=nthin, n.iter=niter, n.burnin=nburnin, debug=TRUE, bugs.directory=bugs.dir)
 summary(out)
 
 my_log <- file("my_log.txt")
@@ -1710,162 +1714,86 @@ sink(my_log, append = TRUE, type = "output")
 print(out, 3)
 closeAllConnections() 
 
-saveRDS(out, paste0("model_results/bugs/admin1/", model_name, "/bugs_model.csv"))
-
-#clean up console
-rm(bugs.dir, excl, nburnin, nchains, niter, num, sumNumNeigh, covs, bugs.data, nthin)
-
 #get the model predictions
 start <- length(mydata$number_resistant[!is.na(mydata$number_resistant)])+length(parameters)
 end <- length(out$summary[,1])-1
-posterior.df <- data.frame(p.mean = out$summary[start:end,1], 
-                           p.sd = out$summary[start:end,2],
-                           p.lower=out$summary[start:end,3], 
-                           p.upper=out$summary[start:end,7],
-                           adj_id = mydata$adj_id[is.na(mydata$number_resistant)],
+
+posterior.df <- data.table(adj_id = mydata$adj_id[is.na(mydata$number_resistant)],
                            COUNTRY_ID = mydata$COUNTRY_ID[is.na(mydata$number_resistant)],
                            year = mydata$year[is.na(mydata$number_resistant)]+1989)
 
-write.csv(posterior.df,paste0("model_results/bugs/admin1/", model_name, "/bugs_final.csv"), row.names=F)
+posterior.df[, paste0('p.mean_HO', i) := out$summary[start:end,1]]
+posterior.df[, paste0('p.lower_HO', i) := out$summary[start:end,3]]
+posterior.df[, paste0('p.upper_HO', i) := out$summary[start:end,7]]
 
-#check in sample stats #### 
-results <- mydata[!is.na(mydata$number_resistant),]
-results$year <- results$year+1989
-results <- merge(results, posterior.df, by = c('COUNTRY_ID', 'adj_id', 'year'), all.y = T, all.x =T)
-coverage <- results$val[!is.na(results$val)]>results$p.lower[!is.na(results$val)] & results$val[!is.na(results$val)]<results$p.upper[!is.na(results$val)]
+if(i ==1){
+  results <- posterior.df
+} else {
+  results <-  merge(results, posterior.df, by = c('adj_id', 'year', 'COUNTRY_ID'))
+}
 
+}
 
-model_metrics <- data.frame(r2 = cor(results$val[!is.na(results$val)], results$p.mean[!is.na(results$val)])^2,
-                            RMSE = RMSE(results$val[!is.na(results$val)], results$p.mean[!is.na(results$val)]),
+#check out of sample stats #### 
+master_data <- merge(master_data, results, by.x = c('adj_id', 'year', 'country'),
+                     by.y = c('adj_id', 'year', 'COUNTRY_ID'))
+
+master_data$oos.mean <- NA
+master_data$oos.mean[master_data$master_fold_id==1] <- master_data$p.mean_HO1[master_data$master_fold_id==1]
+master_data$oos.mean[master_data$master_fold_id==2] <- master_data$p.mean_HO2[master_data$master_fold_id==2]
+master_data$oos.mean[master_data$master_fold_id==3] <- master_data$p.mean_HO3[master_data$master_fold_id==3]
+master_data$oos.mean[master_data$master_fold_id==4] <- master_data$p.mean_HO4[master_data$master_fold_id==4]
+master_data$oos.mean[master_data$master_fold_id==5] <- master_data$p.mean_HO5[master_data$master_fold_id==5]
+# master_data$oos.mean[master_data$master_fold_id==6] <- master_data$p.mean_HO6[master_data$master_fold_id==6]
+# master_data$oos.mean[master_data$master_fold_id==7] <- master_data$p.mean_HO7[master_data$master_fold_id==7]
+# master_data$oos.mean[master_data$master_fold_id==8] <- master_data$p.mean_HO8[master_data$master_fold_id==8]
+# master_data$oos.mean[master_data$master_fold_id==9] <- master_data$p.mean_HO9[master_data$master_fold_id==9]
+# master_data$oos.mean[master_data$master_fold_id==10] <- master_data$p.mean_HO10[master_data$master_fold_id==10]
+
+master_data$oos.upper <- NA
+master_data$oos.upper[master_data$master_fold_id==1] <- master_data$p.upper_HO1[master_data$master_fold_id==1]
+master_data$oos.upper[master_data$master_fold_id==2] <- master_data$p.upper_HO2[master_data$master_fold_id==2]
+master_data$oos.upper[master_data$master_fold_id==3] <- master_data$p.upper_HO3[master_data$master_fold_id==3]
+master_data$oos.upper[master_data$master_fold_id==4] <- master_data$p.upper_HO4[master_data$master_fold_id==4]
+master_data$oos.upper[master_data$master_fold_id==5] <- master_data$p.upper_HO5[master_data$master_fold_id==5]
+# master_data$oos.upper[master_data$master_fold_id==6] <- master_data$p.upper_HO6[master_data$master_fold_id==6]
+# master_data$oos.upper[master_data$master_fold_id==7] <- master_data$p.upper_HO7[master_data$master_fold_id==7]
+# master_data$oos.upper[master_data$master_fold_id==8] <- master_data$p.upper_HO8[master_data$master_fold_id==8]
+# master_data$oos.upper[master_data$master_fold_id==9] <- master_data$p.upper_HO9[master_data$master_fold_id==9]
+# master_data$oos.upper[master_data$master_fold_id==10] <- master_data$p.upper_HO10[master_data$master_fold_id==10]
+
+master_data$oos.lower <- NA
+master_data$oos.lower[master_data$master_fold_id==1] <- master_data$p.lower_HO1[master_data$master_fold_id==1]
+master_data$oos.lower[master_data$master_fold_id==2] <- master_data$p.lower_HO2[master_data$master_fold_id==2]
+master_data$oos.lower[master_data$master_fold_id==3] <- master_data$p.lower_HO3[master_data$master_fold_id==3]
+master_data$oos.lower[master_data$master_fold_id==4] <- master_data$p.lower_HO4[master_data$master_fold_id==4]
+master_data$oos.lower[master_data$master_fold_id==5] <- master_data$p.lower_HO5[master_data$master_fold_id==5]
+# master_data$oos.lower[master_data$master_fold_id==6] <- master_data$p.lower_HO6[master_data$master_fold_id==6]
+# master_data$oos.lower[master_data$master_fold_id==7] <- master_data$p.lower_HO7[master_data$master_fold_id==7]
+# master_data$oos.lower[master_data$master_fold_id==8] <- master_data$p.lower_HO8[master_data$master_fold_id==8]
+# master_data$oos.lower[master_data$master_fold_id==9] <- master_data$p.lower_HO9[master_data$master_fold_id==9]
+# master_data$oos.lower[master_data$master_fold_id==10] <- master_data$p.lower_HO10[master_data$master_fold_id==10]
+
+coverage <- master_data$val[!is.na(master_data$val)]>master_data$oos.lower[!is.na(master_data$val)] & master_data$val[!is.na(master_data$val)]<master_data$oos.upper[!is.na(master_data$val)]
+
+model_metrics <- data.frame(r2 = cor(master_data$val[!is.na(master_data$val)], master_data$oos.mean[!is.na(master_data$val)])^2,
+                            RMSE = RMSE(master_data$val[!is.na(master_data$val)], master_data$oos.mean[!is.na(master_data$val)]),
                             coverage = length(coverage[coverage==TRUE])/length(coverage)*100)
 
 write.csv(model_metrics, paste0('model_results/bugs/admin1/', model_name, '/model_metrics.csv'), row.names = F)
 
-#Plot out model estimates ####
-pdf(paste0('model_results/bugs/admin1/', model_name, '/estimates.pdf'),
-    height = 8.3, width = 11.7)
+png(paste0('model_results/bugs/admin1/', model_name, '/OOS_plot.png'),
+    height = 20, width = 20, units = 'cm', res = 200)
+ggplot(master_data, aes(x = val, y = oos.mean, size = sample_size))+
+  geom_point()+
+  xlim(0,1)+
+  ylim(0,1)+
+  geom_abline(slope = 1, intercept = 0, colour = 'red')+
+  theme_bw() +
+  theme(strip.background = element_rect(fill = "white")) +
+  labs(
+    x = "Data Estimate",
+    y = "Mean Prediction",
+    size = "Weight")  
 
-#plot out a page for each region
-for(i in 1:length(unique(results$COUNTRY_ID))){
-  subset <- results[results$COUNTRY_ID == unique(results$COUNTRY_ID)[i],]
-  print(
-    ggplot(subset)+
-      geom_line(aes(x=year, y = p.mean),color = 'green')+
-      geom_ribbon(aes(ymin = p.lower, ymax=p.upper, x = year), alpha = 0.1, fill = 'green') +
-      geom_point(aes(x = year, y = val))+
-      # geom_pointrange(aes(x=year_id, y = val, ymin = lower_ci, ymax = upper_ci)) +
-      scale_x_continuous("Year", 
-                         breaks = seq(1990, 2018, 5),
-                         labels = c("1990", "1995", "2000", "2005", "2010", "2015"))+
-      ylim(0,1)+
-      ylab('Proportion DR')+
-      theme_bw()+
-      theme(legend.position = "bottom")+
-      ggtitle(unique(subset$COUNTRY_ID))+      
-      facet_wrap(~adj_id, nrow = ceiling(sqrt(length(unique(subset$adj_id)))))+
-      theme(axis.text.x = element_text(angle = 90, hjust = 1))+
-      theme(plot.title = element_text(hjust = 0.5))
-  )
-}
-dev.off()
-
-# Plot map ####
-admin0 <- st_read('C:/Users/Annie/Documents/GRAM/shapefiles/admin2013_0.shp')
-typhi <- st_read('C:/Users/Annie/Documents/GRAM/shapefiles/typhi_endemic_admin1.shp')
-names(typhi) <- c("COUNTRY_ID", "NAME", "GAUL_CODE", "ADMN_LEVEL",  "PARENT_ID",  "spr_rg_id", 
-                  "adj_id","adj_sSA", "adj_id_Asia",  "geometry")
-
-typhi_pred <- merge(typhi, posterior.df, by = c('COUNTRY_ID', 'adj_id'))
-
-background <- admin0[!(admin0$COUNTRY_ID %in% typhi_pred$COUNTRY_ID),]
-  
-  
-png(paste0('model_results/bugs/admin1/', model_name, '/5_yr_map.png'),
-    height = 30, width = 20, units = 'cm', res = 300)
-ggplot()+
-  geom_sf(data = background, fill = '#bdbdbd',colour = 'black', size = 0.15)+
-  geom_sf(data = typhi_pred[typhi_pred$year == 1990 |
-                              typhi_pred$year == 1995 |
-                              typhi_pred$year == 2000 |
-                              typhi_pred$year == 2005 |
-                              typhi_pred$year == 2010 |
-                              typhi_pred$year == 2015,], aes(fill = p.mean),colour = NA)+
-  geom_sf(data = admin0, fill = NA, colour = 'black', size = 0.15)+
-  theme_bw()+
-  theme(line = element_blank(),
-        axis.text = element_blank())+
-  scale_fill_viridis(option='inferno', discrete = F, direction = -1, limits = c(0, 1))+
-  labs(fill = 'Proportion FQNS')+
-  facet_wrap(~year, ncol = 2)+
-  xlim(-20,150)+
-  ylim(-35,55)
-dev.off()
-
-# Aggregate to pop weighted national estimates ####
-# convert bugs object into a matrix of draws
-my_draws <- as.data.frame(out$sims.array)
-my_draws <- my_draws[,start:end] 
-my_draws <- data.frame(t(my_draws))
-
-my_draws$adj_id <- mydata$adj_id[is.na(mydata$number_resistant)]
-my_draws$COUNTRY_ID <-  mydata$COUNTRY_ID[is.na(mydata$number_resistant)]
-my_draws$year <-  mydata$year[is.na(mydata$number_resistant)]+1989
-
-#merge on the population
-pops <- fread('covariates/annual_covs_adm1.csv')
-pops <- pops[,.(admin_code, year, population)]
-locs <- fread('covariates/all_admin1_typhi_covs.csv')
-locs <- locs[,.(COUNTRY_ID, admin_code, adj_id)]
-locs <- unique(locs)
-pops <- merge(pops, locs, by = 'admin_code')
-rm(locs)
-
-my_draws <- merge(my_draws, pops, by = c('COUNTRY_ID', 'adj_id', 'year'))
-my_draws <- data.table(my_draws)
-
-#calculate population weighted mean for each country
-country_preds <- 
-  my_draws[, lapply(.SD, weighted.mean, population), 
-           by=c('COUNTRY_ID', 'year'), 
-           .SDcols=4:1003] 
-
-country_preds$p.mean <- rowMeans(country_preds[,3:1002])
-country_preds$p.lower <- apply(country_preds[, 3:1002], 1, function(x) quantile(x, 0.025))
-country_preds$p.upper <- apply(country_preds[, 3:1002], 1, function(x) quantile(x, 0.975))
-
-#save the predictions (draw and mean (UI))
-write.csv(country_preds, paste0("model_results/bugs/admin1/", model_name, "/national_estimates.csv"), row.names = F)
-
-#merge on regions
-locs <- read.dbf("C:/Users/Annie/Documents/GRAM/shapefiles/GBD2019_analysis_final.dbf")
-locs <- locs[locs$level == 3,]
-locs <- locs[c('ihme_lc_id', 'spr_reg_id')]
-locs$ihme_lc_id <- as.character(locs$ihme_lc_id)
-
-country_preds <-  merge(country_preds, locs, by.x = 'COUNTRY_ID', by.y = 'ihme_lc_id')
-
-#merge on the data points
-mydata <- data.table(mydata)
-input <- mydata[,.(COUNTRY_ID, year=year+1989, val, adj_id)]
-
-country_preds <- merge(country_preds, input, 
-                       by= c('COUNTRY_ID', 'year'),
-                       all.x = T, all.y = T, allow.cartesian = T)
-
-#plot out the national estimates
-pdf(paste0('model_results/bugs/admin1/', model_name, '/national_estimates.pdf'),
-    height = 8.3, width = 11.7)
-
-#plot out a page for each region
-for(i in 1:length(unique(country_preds$spr_reg_id))){
-  subset <- country_preds[country_preds$spr_reg_id == unique(country_preds$spr_reg_id)[i],]
-  print(
-    ggplot(subset)+
-      geom_line(aes(x=year, y = p.mean),color = 'green')+
-      geom_ribbon(aes(ymin = p.lower, ymax=p.upper, x = year), alpha = 0.1, fill = 'green') +
-      geom_point(aes(x = year, y = val))+
-      facet_wrap(~COUNTRY_ID, nrow = ceiling(sqrt(length(unique(subset$COUNTRY_ID)))))+
-      ylim(0, 1)
-  )
-}
 dev.off()

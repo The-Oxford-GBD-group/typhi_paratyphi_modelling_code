@@ -16,7 +16,7 @@ RMSE = function(m, o){
 }
 
 setwd("C:/Users/Annie/Documents/GRAM/typhi_paratyphi")
-model_name <- 'MDR_Paratyphi/4_updated_data' 
+model_name <- 'MDR_Paratyphi/final' 
 dir.create(paste0('model_results/bugs/admin1/', model_name), showWarnings = F, recursive = T)
 
 ##Define the model in BUGS language ####
@@ -119,7 +119,7 @@ mydata <- mydata[,.(adj_id, country, year = year_id, source_id =nid,
 
 
 #get covs (to have a template for all country-years)
-covs <- read.csv("model_results/stacked_ensemble/MDR_Paratyphi/2021_06_25/custom_stage1_df.csv")
+covs <- read.csv("model_results/stacked_ensemble/MDR_Paratyphi/2021_07_20/custom_stage1_df.csv")
 
 all_covs <- read.csv("covariates/all_admin1_typhi_covs.csv")
 
@@ -139,6 +139,10 @@ mydata <- rbind.fill(mydata, covs)
 #Make year id 1:30
 mydata$year <- mydata$year-1989
 
+#Get rid of small island nations
+excl <- c('ASM','COK','FJI','FSM','GUM', 'KIR', 'MHL','MNP','MUS','NIU','NRU','PLW','SLB','TON', 'TUV','VUT','WSM','COM','STP','BRN','KOR')
+mydata <- mydata[!(mydata$COUNTRY_ID%in%excl),]
+
 #fill in the missing values (made it work with the aggregated file)
 mydata$source_id <- as.numeric(as.factor(mydata$source_id))
 mydata$source_id[is.na(mydata$source_id)] <- max(mydata$source_id,na.rm=T)+1
@@ -147,14 +151,13 @@ mydata$sample_size[is.na(mydata$sample_size)] <- 50
 #restrict to South southeast east Asia and Oceania, also remove mauritus
 mydata <- mydata[mydata$adj_id<=904,]
 mydata <- mydata[!(mydata$adj_id>=398 & mydata$adj_id<=820),]
-mydata <- mydata[mydata$COUNTRY_ID!='MUS',]
 #set up adjacency matrix info ####
 
 num <- c(0,3,4,6,2,5,3,6,4,8,5,0,7,2,6,6,6,4,6,6,6,8,3,4,8,4,2,4,7,0,2,7,26,14,6,0,0,3,1,1,1,0,0,1,2,
-         0,2,4,2,1,3,1,4,3,2,0,2,3,2,1,4,3,4,4,4,2,4,6,3,3,4,2,3,3,3,3,5,7,7,5,6,7,6,8,5,1,5,2,6,6,3,
+         0,3,4,2,1,3,1,4,3,2,0,2,3,2,1,4,3,4,4,4,2,4,6,3,3,4,2,3,3,3,3,5,7,7,5,6,7,6,8,5,1,5,2,6,6,3,
          1,7,6,7,6,6,7,3,5,0,0,5,5,8,6,5,5,8,4,6,4,6,8,10,6,4,6,5,5,5,4,5,4,5,4,4,3,0,6,7,4,6,3,5,5,7,
          3,8,6,6,8,6,7,3,6,0,0,3,4,4,5,4,5,4,2,3,3,5,4,1,2,4,6,7,3,2,2,7,4,2,0,0,0,2,2,3,3,2,2,2,4,3,
-         2,1,5,3,3,4,3,0,0,4,7,6,5,5,4,3,0,0,4,0,4,5,0,0,1,4,4,2,0,6,4,7,3,5,3,3,5,4,7,4,0,0,1,0,0,0,
+         2,1,5,4,3,4,4,1,0,4,7,6,5,5,4,3,0,0,4,0,4,5,0,0,1,4,4,2,0,6,4,7,3,5,3,3,5,4,7,4,0,0,1,0,0,0,
          0,1,0,0,4,4,6,7,8,4,4,7,7,6,3,4,6,5,8,9,4,7,3,9,8,5,5,7,5,7,6,8,8,5,4,4,3,6,4,6,3,4,3,4,5,7,
          4,4,7,7,5,0,3,4,6,2,6,7,5,2,4,3,5,4,6,5,7,6,7,5,5,10,5,4,7,6,5,5,5,5,0,6,5,3,5,3,3,4,2,4,5,3,
          1,3,0,0,0,2,6,7,6,5,4,5,5,5,6,5,7,5,3,7,6,3,4,7,4,7,3,4,6,5,4,4,5,3,6,5,4,4,7,3,2,3,5,6,5,3,
@@ -226,7 +229,7 @@ bugs.data <- list(N=904,T=30,nTot=length(mydata$number_resistant), S=max(mydata$
                     67,
                     58,75,
                     
-                    55,58,
+                    55,58,187,
                     66,67,68,76,
                     70,71,
                     67,
@@ -366,11 +369,11 @@ bugs.data <- list(N=904,T=30,nTot=length(mydata$number_resistant), S=max(mydata$
                     186,188,
                     186,
                     183,184,185,187,188,
-                    183,186,188,
+                    47,183,186,188,
                     184,186,187,
                     176,177,178,190,
-                    176,179,189,
-                    
+                    176,179,189,191,
+                    190,
                     
                     194,195,209,210,
                     193,196,199,204,205,209,210,
@@ -1100,19 +1103,23 @@ parameters <- c("beta0","tau.h1","tau.h2","tau.t","tau.w","tau.nu","p")
 nchains <- 1
 niter <- 10000
 nburnin <- 5000
-nthin <- 10
+nthin <- 5
 
 ##Locate WinBUGS by setting path below specifically for the computer used.
 bugs.dir<-"C:/Users/Annie/Documents/WinBUGS14"
 
 # Do the MCMC stuff from R
-out <- bugs(data = bugs.data, inits = inits, parameters.to.save = parameters, model.file = "typhi.bug", n.chains = nchains, n.thin=nthin, n.iter=niter, n.burnin=nburnin, debug=TRUE, bugs.directory=bugs.dir)
+out <- bugs(data = bugs.data, inits = inits, parameters.to.save = parameters, model.file = "typhi.bug", n.chains = nchains, n.thin=nthin, n.iter=niter, n.burnin=nburnin, debug=FALSE, bugs.directory=bugs.dir)
 summary(out)
 
 my_log <- file("my_log.txt")
 sink(my_log, append = TRUE, type = "output")
 print(out, 3)
 closeAllConnections() 
+
+saveRDS(out, paste0("model_results/bugs/admin1/", model_name, "/bugs_model.csv"))
+#clean up console
+rm(bugs.dir, excl, nburnin, nchains, niter, num, sumNumNeigh, covs, bugs.data, nthin)
 
 #get the model predictions
 
@@ -1199,4 +1206,73 @@ ggplot()+
   facet_wrap(~year, ncol = 2)+
   xlim(60, 150)+
   ylim(-12,55)
+dev.off()
+
+# Aggregate to pop weighted national estimates ####
+# convert bugs object into a matrix of draws
+my_draws <- as.data.frame(out$sims.array)
+my_draws <- my_draws[,start:end] 
+my_draws <- data.frame(t(my_draws))
+
+my_draws$adj_id <- mydata$adj_id[is.na(mydata$number_resistant)]
+my_draws$COUNTRY_ID <-  mydata$COUNTRY_ID[is.na(mydata$number_resistant)]
+my_draws$year <-  mydata$year[is.na(mydata$number_resistant)]+1989
+
+#merge on the population
+pops <- fread('covariates/annual_covs_adm1.csv')
+pops <- pops[,.(admin_code, year, population)]
+locs <- fread('covariates/all_admin1_typhi_covs.csv')
+locs <- locs[,.(COUNTRY_ID, admin_code, adj_id)]
+locs <- unique(locs)
+pops <- merge(pops, locs, by = 'admin_code')
+rm(locs)
+
+my_draws <- merge(my_draws, pops, by = c('COUNTRY_ID', 'adj_id', 'year'))
+my_draws <- data.table(my_draws)
+
+#calculate population weighted mean for each country
+country_preds <- 
+  my_draws[, lapply(.SD, weighted.mean, population), 
+           by=c('COUNTRY_ID', 'year'), 
+           .SDcols=4:1003] 
+
+country_preds$p.mean <- rowMeans(country_preds[,3:1002])
+country_preds$p.lower <- apply(country_preds[, 3:1002], 1, function(x) quantile(x, 0.025))
+country_preds$p.upper <- apply(country_preds[, 3:1002], 1, function(x) quantile(x, 0.975))
+
+#save the predictions (draw and mean (UI))
+write.csv(country_preds, paste0("model_results/bugs/admin1/", model_name, "/national_estimates.csv"), row.names = F)
+
+#merge on regions
+locs <- read.dbf("C:/Users/Annie/Documents/GRAM/shapefiles/GBD2019_analysis_final.dbf")
+locs <- locs[locs$level == 3,]
+locs <- locs[c('ihme_lc_id', 'spr_reg_id')]
+locs$ihme_lc_id <- as.character(locs$ihme_lc_id)
+
+country_preds <-  merge(country_preds, locs, by.x = 'COUNTRY_ID', by.y = 'ihme_lc_id')
+
+#merge on the data points
+mydata <- data.table(mydata)
+input <- mydata[,.(COUNTRY_ID, year=year+1989, val, adj_id)]
+
+country_preds <- merge(country_preds, input, 
+                       by= c('COUNTRY_ID', 'year'),
+                       all.x = T, all.y = T, allow.cartesian = T)
+
+#plot out the national estimates
+pdf(paste0('model_results/bugs/admin1/', model_name, '/national_estimates.pdf'),
+    height = 8.3, width = 11.7)
+
+#plot out a page for each region
+for(i in 1:length(unique(country_preds$spr_reg_id))){
+  subset <- country_preds[country_preds$spr_reg_id == unique(country_preds$spr_reg_id)[i],]
+  print(
+    ggplot(subset)+
+      geom_line(aes(x=year, y = p.mean),color = 'green')+
+      geom_ribbon(aes(ymin = p.lower, ymax=p.upper, x = year), alpha = 0.1, fill = 'green') +
+      geom_point(aes(x = year, y = val))+
+      facet_wrap(~COUNTRY_ID, nrow = ceiling(sqrt(length(unique(subset$COUNTRY_ID)))))+
+      ylim(0, 1)
+  )
+}
 dev.off()

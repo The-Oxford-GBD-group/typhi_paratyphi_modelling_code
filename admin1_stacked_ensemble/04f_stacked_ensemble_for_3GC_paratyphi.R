@@ -21,19 +21,22 @@
   model_date = format(Sys.Date(), "%Y_%m_%d")
   set.seed(5432)
   
-  outputdir <-  paste0('model_results/stacked_ensemble/FQNS_Typhi/', model_date)
+  outputdir <-  paste0('model_results/stacked_ensemble/3GC_Paratyphi/', model_date)
   dir.create(outputdir, showWarnings = F, recursive = T)
   
   #Load data
-  mydata <- fread('model_prep/clean_data/outliered/FQNS_Typhi_outliered.csv')
+  mydata <- fread('model_prep/clean_data/outliered/3GC_Paratyphi_outliered.csv')
   mydata <- mydata[mydata$is_outlier ==0,]
   covs <- read.csv('covariates/all_admin1_typhi_covs.csv')
 
   colnames(covs)[colnames(covs) == 'year'] <- 'year_id'
+  #restrict to south and southeast Asia
+  locs <- read.dbf("C:/Users/Annie/Documents/GRAM/shapefiles/GBD2019_analysis_final.dbf")
+  covs <- covs[covs$COUNTRY_ID %in% locs$ihme_lc_id[locs$spr_reg_id == 4 | locs$spr_reg_id == 158],]
   
   #specify child models to include
   # can be xgboost (BRT), gam, ridge, lasso, enet, nnet (neural nets), rf (random forest), cubist
-  child_models <- c('gam', 'xgboost', 'ridge')
+  child_models <- c('nnet', 'ridge', 'xgboost', 'cubist')
 
   #specify the stacker you want to use out of CWM (constrained weighted mean, from quadratic programming), 
   # RWM (weighted mean based on R-sqr) GBM, GLM, nnet
@@ -58,14 +61,9 @@
   
   #specify covariates you want to include in the model
   #the stackers will essentially autoselect which ones to incude
-  covs_to_include <- c('crutstmp',
-                       'hdi',
-                       'distriverslakes',
-                       # 'rqe',
-                       # 'universal_health_coverage',
-                       'J01M',
-                       'hospital_beds_per1000',
-                       'access2'
+  covs_to_include <- c("crutstmp",
+                        'sanitation_prop',
+                       'J01D', 'QA', "edu_mean"
     )
 
   
@@ -79,7 +77,7 @@
   min_year <- 1990
   max_year <- 2019
   
-  #rename some columns to avoid confusion
+  #rename some colums to avoid confusion
   colnames(mydata)[colnames(mydata)==d] <- 'd' 
   if(!is.null(p)) {colnames(mydata)[colnames(mydata)==p] <- 'p'} 
   if(!is.null(n)) {colnames(mydata)[colnames(mydata)==n] <- 'n'} 
@@ -431,14 +429,14 @@
       vars <- as.matrix(mydata[fold_id != i, covs_to_include, with = F])
       colnames(vars) <- covs_to_include
       
-      if('ridge' %in% child_models){baby_ridge = glmnet(x = vars , y= response, family = family, lambda = 0.005, alpha = 0, weights = mydata$w[mydata$fold_id!=i])}
+      if('ridge' %in% child_models){baby_ridge = glmnet(x = vars , y= response, family = family, lambda = cv_lambda0$lambda.min, alpha = 0, weights = mydata$w[mydata$fold_id!=i])}
       if('lasso' %in% child_models){baby_lasso = glmnet(x = vars , y= response, family = family, lambda = 0.005, alpha = 1, weights = mydata$w[mydata$fold_id!=i])}
       if('enet' %in% child_models){baby_enet = glmnet(x = vars , y= response, family = family, lambda = 0.005, alpha = 0.5, weights = mydata$w[mydata$fold_id!=i])}
       
       new_vars <- as.matrix(mydata[fold_id == i, covs_to_include, with = F])
       
       #fill in the data
-      if('ridge' %in% child_models){mydata[fold_id==i,'ridge_cv_pred' := predict(baby_ridge,newx = new_vars, s = 0.005, type = 'response')]}
+      if('ridge' %in% child_models){mydata[fold_id==i,'ridge_cv_pred' := predict(baby_ridge,newx = new_vars, s = cv_lambda0$lambda.min, type = 'response')]}
       if('lasso' %in% child_models){mydata[fold_id==i,'lasso_cv_pred' := predict(baby_lasso,newx = new_vars, s = 0.005, type = 'response')]}
       if('enet' %in% child_models){mydata[fold_id==i,'enet_cv_pred' := predict(baby_enet,newx = new_vars, s = 0.005, type = 'response')]}
     }
@@ -800,6 +798,11 @@
   write.csv(mydata, paste0(outputdir, '/fitted_child_models.csv'), row.names = F)
   write.csv(covs, paste0(outputdir, '/child_model_preds.csv'), row.names = F)
   
+  # mydata <- read.csv(paste0(outputdir, '/fitted_child_models.csv'), stringsAsFactors =  F)
+  # covs <- read.csv(paste0(outputdir, '/child_model_preds.csv'), stringsAsFactors = F)
+  # mydata <- data.table(mydata)
+  # covs <- data.table(covs)
+  
   #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
   # Combined the child model estimates ####
   #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
@@ -1093,8 +1096,9 @@
   covs <- merge(covs, pops, by = c('adj_id', 'year'))
   
   agg_preds <- covs[,.(xgboost = weighted.mean(xgboost, population),
+                       cubist = weighted.mean(cubist, population),
                        ridge = weighted.mean(ridge, population),
-                       gam = weighted.mean(gam, population),
+                       nnet = weighted.mean(nnet, population),
                        cv_custom_stage_1 = weighted.mean(cv_custom_stage_1, population)),
                     by = c('COUNTRY_ID', 'year')]
   
@@ -1167,3 +1171,4 @@ for(i in 1:length(unique(preds$COUNTRY_ID))){
     )
 }
 dev.off()
+

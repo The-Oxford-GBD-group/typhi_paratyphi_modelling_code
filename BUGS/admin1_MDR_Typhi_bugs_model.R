@@ -16,7 +16,7 @@ RMSE = function(m, o){
 }
 
 setwd("C:/Users/Annie/Documents/GRAM/typhi_paratyphi")
-model_name <- 'MDR_Typhi/23_updated_data' 
+model_name <- 'MDR_Typhi/final' 
 dir.create(paste0('model_results/bugs/admin1/', model_name), showWarnings = F, recursive = T)
 
 ##Define the model in BUGS language ####
@@ -119,8 +119,8 @@ mydata <- mydata[,.(adj_id, adj_id_sSA, adj_id_Asia, country, year = year_id, so
 
 #get covs (to have a template for all country-years)
 # covs <- read.csv("Z:/AMR/Pathogens/typhi_paratyphi/model_results/CAR_INLA/admin1/MDR_Typhi/2021_04_23_sSA/child_model_preds.csv")
-covs_ssa <- read.csv("model_results/stacked_ensemble/MDR_Typhi/2021_06_25_sSA/custom_stage1_df.csv")
-covs_asia <- read.csv("model_results/stacked_ensemble/MDR_Typhi/2021_06_25_Asia/custom_stage1_df.csv")
+covs_ssa <- read.csv("model_results/stacked_ensemble/MDR_Typhi/2021_06_29_sSA//custom_stage1_df.csv")
+covs_asia <- read.csv("model_results/stacked_ensemble/MDR_Typhi/2021_06_29_Asia/custom_stage1_df.csv")
 
 all_covs <- read.csv("covariates/all_admin1_typhi_covs.csv")
 # all_covs <- unique(all_covs[c('adj_id', 'adj_id_sSA', 'COUNTRY_ID')])
@@ -148,6 +148,10 @@ mydata <- rbind.fill(mydata, covs)
 #Make year id 1:30
 mydata$year <- mydata$year-1989
 
+#Get rid of small island nations
+excl <- c('ASM','COK','FJI','FSM','GUM','KIR', 'MHL','MNP','MUS','NIU','NRU','PLW','SLB','TON', 'TUV','VUT','WSM','COM','STP','BRN','KOR')
+mydata <- mydata[!(mydata$COUNTRY_ID%in%excl),]
+
 #fill in the missing values (made it work with the aggregated file)
 mydata$source_id <- as.numeric(as.factor(mydata$source_id))
 mydata$source_id[is.na(mydata$source_id)] <- max(mydata$source_id[!is.na(mydata$source_id)])+1
@@ -156,17 +160,17 @@ mydata$sample_size[is.na(mydata$sample_size)] <- 50
 #set up adjacency matrix info ####
 
 num <- c(0,3,4,6,2,5,3,6,4,8,5,0,7,2,6,6,6,4,6,6,6,8,3,4,8,4,2,4,7,0,2,7,26,14,
-         6,0,0,3,1,1,1,0,0,1,2,0,1,4,2,1,3,1,4,3,2,0,2,1,0,0,3,3,4,4,4,2,4,6,3,
-         3,4,1,3,3,3,3,5,7,7,5,6,7,6,8,5,1,5,2,6,6,3,1,7,6,7,6,6,7,3,5,0,0,5,5,
+         6,0,0,3,1,1,2,0,0,2,2,0,2,4,2,1,3,1,4,3,2,0,2,3,2,1,3,3,4,4,4,2,4,6,3,
+         3,4,2,3,3,3,3,5,7,7,5,6,7,6,8,5,1,5,2,6,6,3,1,7,6,7,6,6,7,3,5,0,0,5,5,
          8,6,5,5,8,4,6,4,6,8,10,6,4,6,5,5,5,4,5,3,5,4,4,3,0,6,7,4,6,3,5,5,7,3,8,
-         6,6,8,6,7,3,6,0,0,3,4,4,5,4,5,4,2,3,3,5,4,1,2,4,6,7,3,2,2,7,4,2,0,0,0,2,
+         6,6,8,6,7,3,6,0,0,4,4,4,5,4,5,4,2,3,3,5,4,1,2,4,6,7,3,2,2,7,4,2,0,0,0,2,
          2,3,3,2,1,1,2,3,2,1,5,3,3,4,3,0,0,4,7,6,5,5,4,3,0,0,4,0,4,5,0,0,1,4,4,2,
          0,6,4,7,3,5,3,3,5,4,7,4,0,0,1,0,0,0,0,1,0,0,4,4,6,7,8,4,4,7,7,6,3,4,6,5,
          8,9,4,7,3,9,8,5,5,7,5,7,6,8,8,5,4,4,3,6,4,6,3,4,3,4,5,7,4,4,7,7,5,0,3,4,
          6,2,6,7,5,2,4,3,5,4,6,5,7,6,7,5,5,10,5,4,7,6,5,5,5,5,0,6,5,3,5,3,3,4,2,4,
          5,3,1,3,0,0,0,2,6,7,6,5,4,5,5,5,6,5,7,5,3,7,6,3,4,7,4,7,3,4,6,5,4,4,5,3,
          6,5,4,4,7,3,2,3,5,6,5,3,6,7,6,4,5,5,6,4,5,6,4,4,6,8,4,8,6,6,4,6,4,6,6,0,
-         0,0,0,0,0,0,2,2,1,3,7,11,0,5,6,4,3,5,9,3,7,5,3,6,3,8,8,6,5,5,6,5,6,4,3,4,
+         0,0,1,0,0,0,2,2,1,3,7,11,0,5,6,4,3,5,9,3,7,5,3,6,3,8,8,6,5,5,6,5,6,4,3,4,
          4,4,5,6,6,7,4,6,4,5,5,4,6,6,4,3,6,6,7,5,5,8,5,2,3,7,5,4,7,10,2,8,5,3,3,3,
          6,7,5,6,6,4,7,4,5,4,8,8,7,4,6,6,8,4,5,4,6,6,6,4,7,5,4,7,7,5,4,6,7,5,6,6,
          8,4,7,4,6,3,4,13,6,7,2,5,2,11,4,5,5,6,10,6,6,5,4,4,4,4,1,2,3,6,4,4,4,6,4,
@@ -186,12 +190,12 @@ num <- c(0,3,4,6,2,5,3,6,4,8,5,0,7,2,6,6,6,4,6,6,6,8,3,4,8,4,2,4,7,0,2,7,26,14,
          3,5,11,17,11,4,6,4,3,5,5,9,6,6,8,0,0,0,4,5,3,2,4,5,0,4,4,5,4,7,1,8,6,5,2,4,
          1,6,7,11,17,5,7,6,6,4,7,5,4,8,4,7,4,5,3,9,6,5,7,4,7,1,6,6,5,6,4,10,1,7,2,5,
          4,3,4,5,3,1,4,4,6,3,2,4,0,2,2,6,4,5,3,3,5,8,3,5,4,16,9,2,4,8,6,4,4,6,3,4,3,
-         3,4,7,4,5,5,6,6,5,4,2,4,6,4,5,6,3,6,2,5,4,3,4,6,3,6,7,4,1,5,9,6,7,5,6,8,9,3,
+         3,4,7,4,5,5,6,6,5,4,2,4,6,4,6,6,3,6,2,5,4,3,4,6,3,6,7,4,1,5,9,6,7,5,6,8,9,3,
          5,3,5,2,1,3,8,5,10,5,4,8,6,6,2,5,5,6,5,3,1,6,4,6,5,6,6,8,9,8,5,6,1,7,7,6,6,
          3,7,7,6,5,5,4,4,3,5,8,4,6,5,10,7,2,8,7,5,4,9,6,7,7,2,4,4,5,5,6,6,4,6,5,6,8,
          3,7,8,5,4,4,9,6,9,7,1,4,3,4,5,5,6,5,6,7,4,2,4,5,3,4,2,4,6,5,3,6,4,4,3,4,4,5,
          4,4,5,6,8,11,7,4,6,6,6,9,0,0,8,8,5,5,6,4,6,9,4,4,6,5,7,5,5,6,5,4,6,6,7,4,4,
-         4,6,5,7,5,6,5,4,6,6,7,1,5,6,11,10,5,4,6,10,7,7,4,3,2,2,4,5,6,7,7,1,2,5,6,2,
+         4,6,5,7,5,6,5,4,6,6,7,2,5,6,11,10,5,4,6,10,7,7,4,3,2,2,4,5,6,7,7,1,2,5,6,3,
          4,5,7,7,4,7,5,5,4,5,5,5,5,8,4,5,6,4,2,5,6,3,6,8,5,6,4,6,7,6,8,5,7,6,5,5,5,4,
          7,6,6,7,5,5,3,6,5,5,5,8,5,5,6,6,4,5,5,5,6,4,6,4,6,7,5,5,7,6,9,8,7,4,4,4,6,5,
          6,9,5,7,4,5,8,7,6,7,2,7,4,8,8,7,7,7,5,6,6,6,5,5,5,6,6,8,4,5,8,6,7,7,7,6,9,3,6,3,6,5,7,5,5,2,3,5,5,7,5,4,5,5,7
@@ -200,7 +204,7 @@ num <- c(0,3,4,6,2,5,3,6,4,8,5,0,7,2,6,6,6,4,6,6,6,8,3,4,8,4,2,4,7,0,2,7,26,14,
 sumNumNeigh<-sum(num)
 
 #specify data and adjacency matrix ####
-bugs.data <- list(N=1474,T=30,S=max(mydata$source_id), nTot=length(mydata$number_resistant),
+bugs.data <- list(N=1474,T=30,nTot=length(mydata$number_resistant), S=max(mydata$source_id),
                   number_resistant=round(mydata$number_resistant,0),sample_size=mydata$sample_size,
                   adj_id = mydata$adj_id, year = mydata$year, source_num = mydata$source_id,
                   custom_stg1 = mydata$cv_custom_stage_1,
@@ -246,13 +250,13 @@ bugs.data <- list(N=1474,T=30,S=max(mydata$source_id), nTot=length(mydata$number
                     39,40,41,
                     38,
                     38,
-                    38,
+                    38,394,
                     
                     
-                    67,
+                    59,67,
                     58,75,
                     
-                    55,
+                    55,58,
                     66,67,68,76,
                     70,71,
                     67,
@@ -263,9 +267,9 @@ bugs.data <- list(N=1474,T=30,S=max(mydata$source_id), nTot=length(mydata$number
                     47,71,
                     
                     61,69,
-                    45,
-                    
-                    
+                    45,47,60,
+                    44,72,
+                    58,
                     57,67,69,
                     51,52,63,
                     51,53,62,65,
@@ -277,7 +281,7 @@ bugs.data <- list(N=1474,T=30,S=max(mydata$source_id), nTot=length(mydata$number
                     54,57,61,
                     49,71,73,
                     49,55,70,73,
-                    64,
+                    59,64,
                     68,70,71,
                     53,54,65,
                     45,199,209,
@@ -354,7 +358,7 @@ bugs.data <- list(N=1474,T=30,S=max(mydata$source_id), nTot=length(mydata$number
                     132,134,136,139,140,143,
                     
                     
-                    154,155,157,
+                    154,155,157,1135,
                     151,152,153,156,
                     150,152,154,157,
                     150,151,153,154,155,
@@ -599,7 +603,7 @@ bugs.data <- list(N=1474,T=30,S=max(mydata$source_id), nTot=length(mydata$number
                     
                     
                     
-                    
+                    41,
                     
                     
                     
@@ -1340,7 +1344,7 @@ bugs.data <- list(N=1474,T=30,S=max(mydata$source_id), nTot=length(mydata$number
                     1131,1133,1134,1141,
                     1128,1131,1132,1140,1141,1144,
                     1132,1140,1141,1148,
-                    1127,1128,1130,1147,1148,
+                    149,1127,1128,1130,1147,1148,
                     1127,1129,1137,1138,1143,1146,
                     1136,1143,1146,
                     1129,1136,1142,1143,1144,1147,
@@ -1524,7 +1528,7 @@ bugs.data <- list(N=1474,T=30,S=max(mydata$source_id), nTot=length(mydata$number
                     944,945,951,1070,1313,1315,
                     941,955,959,1067,1068,1314,
                     1109,1320,1324,1326,1327,1337,1338,
-                    1334,
+                    1334,1343,
                     1318,1321,1326,1329,1338,
                     1186,1320,1328,1329,1336,1338,
                     927,935,1232,1323,1327,1331,1337,1414,1421,1426,1443,
@@ -1548,7 +1552,7 @@ bugs.data <- list(N=1474,T=30,S=max(mydata$source_id), nTot=length(mydata$number
                     1333,1343,
                     1323,1328,1335,1337,1338,
                     1104,1324,1326,1329,1332,1334,
-                    1333,1340,
+                    1319,1333,1340,
                     1366,1376,1382,1391,
                     1109,1352,1367,1373,1374,
                     1276,1368,1377,1393,1397,1407,1416,
@@ -1701,7 +1705,7 @@ nthin <- 10
 bugs.dir<-"C:/Users/Annie/Documents/WinBUGS14"
 
 # Do the MCMC stuff from R
-out <- bugs(data = bugs.data, inits = inits, parameters.to.save = parameters, model.file = "typhi.bug", n.chains = nchains, n.thin=nthin, n.iter=niter, n.burnin=nburnin, debug=TRUE, bugs.directory=bugs.dir)
+out <- bugs(data = bugs.data, inits = inits, parameters.to.save = parameters, model.file = "typhi.bug", n.chains = nchains, n.thin=nthin, n.iter=niter, n.burnin=nburnin, debug=FALSE, bugs.directory=bugs.dir)
 summary(out)
 
 my_log <- file("my_log.txt")
@@ -1709,8 +1713,12 @@ sink(my_log, append = TRUE, type = "output")
 print(out, 3)
 closeAllConnections() 
 
-#get the model predictions
+saveRDS(out, paste0("model_results/bugs/admin1/", model_name, "/bugs_model.csv"))
 
+#clean up console
+rm(bugs.dir, excl, nburnin, nchains, niter, num, sumNumNeigh, covs, bugs.data, nthin)
+
+#get the model predictions
 start <- length(mydata$number_resistant[!is.na(mydata$number_resistant)])+length(parameters)
 end <- length(out$summary[,1])-1
 posterior.df <- data.frame(p.mean = out$summary[start:end,1], 
@@ -1728,7 +1736,6 @@ results <- mydata[!is.na(mydata$number_resistant),]
 results$year <- results$year+1989
 results <- merge(results, posterior.df, by = c('COUNTRY_ID', 'adj_id', 'year'), all.y = T, all.x =T)
 coverage <- results$val[!is.na(results$val)]>results$p.lower[!is.na(results$val)] & results$val[!is.na(results$val)]<results$p.upper[!is.na(results$val)]
-
 
 model_metrics <- data.frame(r2 = cor(results$val[!is.na(results$val)], results$p.mean[!is.na(results$val)])^2,
                             RMSE = RMSE(results$val[!is.na(results$val)], results$p.mean[!is.na(results$val)]),
@@ -1794,4 +1801,73 @@ ggplot()+
   facet_wrap(~year, ncol = 2)+
   xlim(-20,150)+
   ylim(-35,55)
+dev.off()
+
+# Aggregate to pop weighted national estimates ####
+# convert bugs object into a matrix of draws
+my_draws <- as.data.frame(out$sims.array)
+my_draws <- my_draws[,start:end] 
+my_draws <- data.frame(t(my_draws))
+
+my_draws$adj_id <- mydata$adj_id[is.na(mydata$number_resistant)]
+my_draws$COUNTRY_ID <-  mydata$COUNTRY_ID[is.na(mydata$number_resistant)]
+my_draws$year <-  mydata$year[is.na(mydata$number_resistant)]+1989
+
+#merge on the population
+pops <- fread('covariates/annual_covs_adm1.csv')
+pops <- pops[,.(admin_code, year, population)]
+locs <- fread('covariates/all_admin1_typhi_covs.csv')
+locs <- locs[,.(COUNTRY_ID, admin_code, adj_id)]
+locs <- unique(locs)
+pops <- merge(pops, locs, by = 'admin_code')
+rm(locs)
+
+my_draws <- merge(my_draws, pops, by = c('COUNTRY_ID', 'adj_id', 'year'))
+my_draws <- data.table(my_draws)
+
+#calculate population weighted mean for each country
+country_preds <- 
+  my_draws[, lapply(.SD, weighted.mean, population), 
+           by=c('COUNTRY_ID', 'year'), 
+           .SDcols=4:503] 
+
+country_preds$p.mean <- rowMeans(country_preds[,3:502])
+country_preds$p.lower <- apply(country_preds[, 3:502], 1, function(x) quantile(x, 0.025))
+country_preds$p.upper <- apply(country_preds[, 3:502], 1, function(x) quantile(x, 0.975))
+
+#save the predictions (draw and mean (UI))
+write.csv(country_preds, paste0("model_results/bugs/admin1/", model_name, "/national_estimates.csv"), row.names = F)
+
+#merge on regions
+locs <- read.dbf("C:/Users/Annie/Documents/GRAM/shapefiles/GBD2019_analysis_final.dbf")
+locs <- locs[locs$level == 3,]
+locs <- locs[c('ihme_lc_id', 'spr_reg_id')]
+locs$ihme_lc_id <- as.character(locs$ihme_lc_id)
+
+country_preds <-  merge(country_preds, locs, by.x = 'COUNTRY_ID', by.y = 'ihme_lc_id')
+
+#merge on the data points
+mydata <- data.table(mydata)
+input <- mydata[,.(COUNTRY_ID, year=year+1989, val, adj_id)]
+
+country_preds <- merge(country_preds, input, 
+                   by= c('COUNTRY_ID', 'year'),
+                   all.x = T, all.y = T, allow.cartesian = T)
+
+#plot out the national estimates
+pdf(paste0('model_results/bugs/admin1/', model_name, '/national_estimates.pdf'),
+    height = 8.3, width = 11.7)
+
+#plot out a page for each region
+for(i in 1:length(unique(country_preds$spr_reg_id))){
+  subset <- country_preds[country_preds$spr_reg_id == unique(country_preds$spr_reg_id)[i],]
+  print(
+    ggplot(subset)+
+      geom_line(aes(x=year, y = p.mean),color = 'green')+
+      geom_ribbon(aes(ymin = p.lower, ymax=p.upper, x = year), alpha = 0.1, fill = 'green') +
+      geom_point(aes(x = year, y = val))+
+      facet_wrap(~COUNTRY_ID, nrow = ceiling(sqrt(length(unique(subset$COUNTRY_ID)))))+
+      ylim(0, 1)
+  )
+}
 dev.off()

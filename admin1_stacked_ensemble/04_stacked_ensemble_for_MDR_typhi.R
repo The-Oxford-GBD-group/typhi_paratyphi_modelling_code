@@ -44,7 +44,7 @@
   }else if (region == 'Asia'){
     mydata <- mydata[!is.na(mydata$adj_id_Asia),]
     covs <- covs[!is.na(covs$adj_id_Asia),]
-    child_models <- c('gam', 'xgboost', 'ridge')
+    child_models <- c('gam', 'xgboost')
   } else{
     child_models <- c('xgboost', 'gam', 'lasso')
   }
@@ -67,21 +67,6 @@
   #Include year in your models?
   include_year <-  TRUE
   
-  # # lag the covariates, either 2 or 5 years
-  # extra <- covs[covs$year_id ==1990,]
-  # extra2 <- covs[covs$year_id ==1990,]
-  # # extra3 <- covs[covs$year_id ==1990,]
-  # # extra4 <- covs[covs$year_id ==1990,]
-  # # extra5 <- covs[covs$year_id ==1990,]
-  # extra2$year_id <- 1991
-  # # extra3$year_id <- 1992
-  # # extra4$year_id <- 1993
-  # # extra5$year_id <- 1994
-  # covs$year_id <- covs$year_id+2
-  # # covs <- rbindlist(list(covs, extra, extra2, extra3, extra4, extra5))
-  # covs <- rbindlist(list(covs, extra, extra2))
-  # covs <-  data.frame(covs)
-
   #specify holdout method, currently can use random or country
   holdout_method <- 'random'
   
@@ -89,7 +74,7 @@
   #the stackers will essentially autoselect which ones to incude
   if(region == 'sSA'){
     covs_to_include <-  c('sanitation_prop',
-                          'water_prop',
+                          # 'water_prop',
                           'hdi',
                           'pop_density',
                           'rqe',
@@ -108,6 +93,8 @@
                          'physicians_pc',
                          'hospital_beds_per1000',
                          'anc4_coverage_prop',
+                         'J01M',
+                         'J01C',
                          'sanitation_prop'
     )
   }else{
@@ -1159,12 +1146,18 @@
   colnames(covs)[colnames(covs) == 'year_id'] <- 'year'
   covs <- merge(covs, pops, by = c('adj_id', 'year'))
   
+  if(region == 'Asia'){
   agg_preds <- covs[,.(xgboost = weighted.mean(xgboost, population),
-                       ridge = weighted.mean(ridge, population),
                        gam = weighted.mean(gam, population),
                        cv_custom_stage_1 = weighted.mean(cv_custom_stage_1, population)),
                     by = c('COUNTRY_ID', 'year')]
-  
+  }else{
+    agg_preds <- covs[,.(xgboost = weighted.mean(xgboost, population),
+                         ridge = weighted.mean(ridge, population),
+                         gam = weighted.mean(gam, population),
+                         cv_custom_stage_1 = weighted.mean(cv_custom_stage_1, population)),
+                      by = c('COUNTRY_ID', 'year')]
+  }
   #merge on regions
   locs <- read.dbf("C:/Users/Annie/Documents/GRAM/shapefiles/GBD2019_analysis_final.dbf")
   locs <- locs[locs$level == 3,]

@@ -19,13 +19,14 @@
   #set output directory
   setwd("C:/Users/Annie/Documents/GRAM/typhi_paratyphi")
   model_date = format(Sys.Date(), "%Y_%m_%d")
+  # model_date = 'updated_data'
   set.seed(5432)
   
-  outputdir <-  paste0('model_results/stacked_ensemble/FQNS_Typhi/', model_date)
+  outputdir <-  paste0('model_results/stacked_ensemble/3GC_Typhi/', model_date)
   dir.create(outputdir, showWarnings = F, recursive = T)
   
   #Load data
-  mydata <- fread('model_prep/clean_data/outliered/FQNS_Typhi_outliered.csv')
+  mydata <- fread('model_prep/clean_data/outliered/3GC_Typhi_outliered.csv')
   mydata <- mydata[mydata$is_outlier ==0,]
   covs <- read.csv('covariates/all_admin1_typhi_covs.csv')
 
@@ -33,7 +34,7 @@
   
   #specify child models to include
   # can be xgboost (BRT), gam, ridge, lasso, enet, nnet (neural nets), rf (random forest), cubist
-  child_models <- c('gam', 'xgboost', 'ridge')
+  child_models <- c('cubist', 'xgboost', 'gam')
 
   #specify the stacker you want to use out of CWM (constrained weighted mean, from quadratic programming), 
   # RWM (weighted mean based on R-sqr) GBM, GLM, nnet
@@ -58,13 +59,10 @@
   
   #specify covariates you want to include in the model
   #the stackers will essentially autoselect which ones to incude
-  covs_to_include <- c('crutstmp',
-                       'hdi',
-                       'distriverslakes',
-                       # 'rqe',
-                       # 'universal_health_coverage',
-                       'J01M',
-                       'hospital_beds_per1000',
+  covs_to_include <- c("water_prop",
+                       "ddd_per_1000",
+                       "J01D",
+                       'crutstmp',
                        'access2'
     )
 
@@ -1092,9 +1090,9 @@
   colnames(covs)[colnames(covs) == 'year_id'] <- 'year'
   covs <- merge(covs, pops, by = c('adj_id', 'year'))
   
-  agg_preds <- covs[,.(xgboost = weighted.mean(xgboost, population),
-                       ridge = weighted.mean(ridge, population),
-                       gam = weighted.mean(gam, population),
+  agg_preds <- covs[,.(cubist = weighted.mean(cubist),
+                       xgboost = weighted.mean(xgboost),
+                       gam = weighted.mean(gam),
                        cv_custom_stage_1 = weighted.mean(cv_custom_stage_1, population)),
                     by = c('COUNTRY_ID', 'year')]
   

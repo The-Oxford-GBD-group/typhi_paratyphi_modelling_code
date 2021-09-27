@@ -21,19 +21,23 @@
   model_date = format(Sys.Date(), "%Y_%m_%d")
   set.seed(5432)
   
-  outputdir <-  paste0('model_results/stacked_ensemble/FQNS_Typhi/', model_date)
+  outputdir <-  paste0('model_results/stacked_ensemble/MDR_Paratyphi/holdouts/', model_date)
   dir.create(outputdir, showWarnings = F, recursive = T)
   
+  n_holdouts = 5
   #Load data
-  mydata <- fread('model_prep/clean_data/outliered/FQNS_Typhi_outliered.csv')
-  mydata <- mydata[mydata$is_outlier ==0,]
-  covs <- read.csv('covariates/all_admin1_typhi_covs.csv')
+  master_data <- fread('model_prep/clean_data/outliered/MDR_Paratyphi_outliered.csv')
+  master_data <- master_data[master_data$is_outlier ==0,]
+  covs <- read.csv('covariates//all_admin1_typhi_covs.csv')
 
   colnames(covs)[colnames(covs) == 'year'] <- 'year_id'
+  #restrict to south and southeast Asia
+  locs <- read.dbf("C:/Users/Annie/Documents/GRAM/shapefiles/GBD2019_analysis_final.dbf")
+  covs <- covs[covs$COUNTRY_ID %in% locs$ihme_lc_id[locs$spr_reg_id == 4 | locs$spr_reg_id == 158],]
   
   #specify child models to include
   # can be xgboost (BRT), gam, ridge, lasso, enet, nnet (neural nets), rf (random forest), cubist
-  child_models <- c('gam', 'xgboost', 'ridge')
+  child_models <- c('xgboost', 'ridge')
 
   #specify the stacker you want to use out of CWM (constrained weighted mean, from quadratic programming), 
   # RWM (weighted mean based on R-sqr) GBM, GLM, nnet
@@ -58,14 +62,10 @@
   
   #specify covariates you want to include in the model
   #the stackers will essentially autoselect which ones to incude
-  covs_to_include <- c('crutstmp',
-                       'hdi',
-                       'distriverslakes',
-                       # 'rqe',
-                       # 'universal_health_coverage',
-                       'J01M',
-                       'hospital_beds_per1000',
-                       'access2'
+  covs_to_include <- c('ihmepm25',
+                       'gee',
+                       'universal_health_coverage',
+                       'ddd_per_1000', 'crutstmp'
     )
 
   
@@ -79,33 +79,33 @@
   min_year <- 1990
   max_year <- 2019
   
-  #rename some columns to avoid confusion
-  colnames(mydata)[colnames(mydata)==d] <- 'd' 
-  if(!is.null(p)) {colnames(mydata)[colnames(mydata)==p] <- 'p'} 
-  if(!is.null(n)) {colnames(mydata)[colnames(mydata)==n] <- 'n'} 
+  #rename some colums to avoid confusion
+  colnames(master_data)[colnames(master_data)==d] <- 'd' 
+  if(!is.null(p)) {colnames(master_data)[colnames(master_data)==p] <- 'p'} 
+  if(!is.null(n)) {colnames(master_data)[colnames(master_data)==n] <- 'n'} 
   
   #if you dont have n but have p and d
-  if(is.null(n) &!is.null(p)&!is.null(d)){mydata$n <- mydata$p*mydata$d}
+  if(is.null(n) &!is.null(p)&!is.null(d)){master_data$n <- master_data$p*master_data$d}
   
   #if you havent specified a weights column set to 1
   if(is.null(w)){
-    mydata$w <- 1
+    master_data$w <- 1
   } else {
-    colnames(mydata)[colnames(mydata)==w] <- 'w' 
+    colnames(master_data)[colnames(master_data)==w] <- 'w' 
   }
   
   #perform transformations as specified
   if(is.null(transformation)){
   } else if(transformation == 'log'){
     if(family == 'binomial'){
-      mydata$n <- log(mydata$n)
-      mydata$d <- log(mydata$d)
-      mydata$p <- log(mydata$p)
+      master_data$n <- log(master_data$n)
+      master_data$d <- log(master_data$d)
+      master_data$p <- log(master_data$p)
     } else if(family == 'gaussian')
-      mydata$n <- log(mydata$n)
+      master_data$n <- log(master_data$n)
   } else if(transformation == 'logit'){  #ln(p/1-p)
     if(family == 'binomial'){
-      mydata$p <- log(mydata$p/(1-mydata$p))
+      master_data$p <- log(master_data$p/(1-master_data$p))
     } else if(family == 'gaussian'){
       message('should not be using logit transformation with gaussian data')
     }
@@ -123,51 +123,82 @@
     covs$year <- scale(covs$year_id)
     covs <-  data.table(covs)
     
-    mydata$QA <-  scale(mydata$QA)
+    master_data$QA <-  scale(master_data$QA)
   }
   
   #merge covs onto data
-  mydata <- merge(mydata, covs)
-  mydata <- data.table(mydata)
+  master_data <- merge(master_data, covs)
+  master_data <- data.table(master_data)
+  
   
   ## remove NAs
   if(family == 'binomial'){
-    mydata    <- na.omit(mydata, c('n', 'd', 'p', names(covs)))
+    master_data    <- na.omit(master_data, c('n', 'd', 'p', names(covs)))
   }
   
   if(family == 'gaussian'){
-    mydata    <- na.omit(mydata, c('n', names(covs)))
-  }
-  
-  ## shuffle the data into five random folds
-  if(holdout_method == 'random'){
-    mydata <- mydata[sample(nrow(mydata)),]
-    mydata[,fold_id := cut(seq(1,nrow(mydata)),breaks=5,labels=FALSE)]
-  }
-  
-  if(holdout_method == 'country'){
-    country <- unique(mydata[, country])
-    country <- country[sample(length(country))]
-    fold_id <- cut(seq(1,length(country)),breaks=5,labels=FALSE)
-    folds <- as.data.table(cbind(country, fold_id))
-    
-    mydata <- merge(mydata, folds, by = c('country'))
-    mydata$fold_id <- as.numeric(mydata$fold_id)
-    rm(country, fold_id)
+    master_data    <- na.omit(master_data, c('n', names(covs)))
   }
   
   # Limit to required years
-  mydata <- mydata[mydata$year_id >= min_year & mydata$year_id <= max_year,]
+  master_data <- master_data[master_data$year_id >= min_year & master_data$year_id <= max_year,]
   covs <- covs[covs$year_id >= min_year & covs$year_id <= max_year,] #limit to the year +2 as have laged the covariates
   
+  ## shuffle the data into random folds
+  if(holdout_method == 'random'){
+    master_data <- master_data[sample(nrow(master_data)),]
+    master_data[,master_fold_id := cut(seq(1,nrow(master_data)),breaks=n_holdouts,labels=FALSE)]
+  }
+  
+  if(holdout_method == 'country'){
+    country <- unique(master_data[, country])
+    country <- country[sample(length(country))]
+    fold_id <- cut(seq(1,length(country)),breaks=n_holdouts,labels=FALSE)
+    folds <- as.data.table(cbind(country, fold_id))
+    
+    master_data <- merge(master_data, folds, by = c('country'))
+    master_data$master_fold_id <- as.numeric(master_data$fold_id)
+    rm(country, fold_id)
+  }
+  
   ## add a row id column
-  mydata[, a_rowid := seq(1:nrow(mydata))]
+  master_data[, a_rowid := seq(1:nrow(master_data))]
   
   if(include_year == TRUE){
     covs_to_include <- c('year', covs_to_include)
   }
   
-  covs$QA <- min(mydata$QA)
+  covs$QA <- min(master_data$QA)
+  write.csv(master_data, paste0(outputdir, '/master_data.csv'), row.names = F)
+  ## Set up holdouts
+  for(h in 1:n_holdouts){
+    message(paste0('Running holdout ', h))
+    #limit data to a holdout
+    mydata <- master_data[master_data$master_fold_id !=h,]
+    mydata$master_fold_id <- NULL
+    
+    #set up holdouts for the stackers
+    ## shuffle the data into five random folds
+    if(holdout_method == 'random'){
+      mydata <- mydata[sample(nrow(mydata)),]
+      mydata[,fold_id := cut(seq(1,nrow(mydata)),breaks=5,labels=FALSE)]
+    }
+    
+    if(holdout_method == 'country'){
+      country <- unique(mydata[, country])
+      country <- country[sample(length(country))]
+      fold_id <- cut(seq(1,length(country)),breaks=5,labels=FALSE)
+      folds <- as.data.table(cbind(country, fold_id))
+      
+      mydata <- merge(mydata, folds, by = c('country'))
+      mydata$fold_id <- as.numeric(mydata$fold_id)
+      rm(country, fold_id)
+    }
+    
+    
+    ## add a row id column
+    mydata[, a_rowid := seq(1:nrow(mydata))]
+    
   #~~~~~~~~~~~~~~~~~~~~~#
   # Fit child models ####
   #~~~~~~~~~~~~~~~~~~~~~#
@@ -764,406 +795,160 @@
     rm(form, cov_plot, train_control, train_control_final, cubist_fit, cubist_fit_final, tunegrid, tunegrid_final)
   }
   
-  #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-  # Check the correlation of the stackers ####
-  #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-  #if any of the preds are highly corelted the remove one of the correlated models
-  
-  for(i in 1:length(child_models)){
-    for(j in 1:length(child_models)){
-      if(i==j){
-      } else{
-        if(cor(mydata[,get(paste0(child_models[i], '_cv_pred'))],mydata[,get(paste0(child_models[j], '_cv_pred'))])^2>0.8){message(paste0(child_models[i],  ' and ', child_models[j], ' correlated, remove one'))}
-      }
-    }
-  }
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+    # Combined the child model estimates ####
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+    # what methods to use to create the stackers
+    # use either a GPR or constrained weighted mean or other model
+    # ensure beta coefficients are contrained to sum to 1
+    
+    #remove unwanted child models from the data frame to calculate child model weights
+    stackers <- data.frame(mydata)
+    X <- as.matrix(stackers[colnames(stackers)[(grep('cv_pred', colnames(stackers)))]])
+    Y = if(family == 'binomial'){stackers$p}else if(family == 'gaussian'){stackers$n}
+    
+    #stack the predictions for all locations
+    C <- data.frame(covs)
+    C <- as.matrix(C[c(child_models)])
+    
+    #Select which stacker you are using and stack the estimates
+    
+    if(stacker == 'CWM'){
+      # The following code is from http://zoonek.free.fr/blosxom/R/2012-06-01_Optimization.html
+      # Calculate coefficients (child stacker weights)
+      # Coefficients must sum to 1 and >=0
+      s <- solve.QP( 
+        t(X) %*% X, t(Y) %*% X, 
+        cbind(  # One constraint per COLUMN
+          matrix(1, nr=length(child_models), nc=1),
+          diag(length(child_models)),
+          -diag(length(child_models))
+        ),
+        c(1, 
+          rep(0.000001, length(child_models)),
+          rep(-1, length(child_models))), 
+        meq = 1 # Only the first constraint is an equality if meq = 1 so set to 0, the others are >=
+      )
       
-  #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-  # Print out correlations between data and predictions ####
-  # this is to aid selection of child models               #
-  #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-  
-  for(i in 1:length(child_models)){
-    if(family == 'binomial'){
-      message(paste0(child_models[i], ' correlation: ', round(cor(mydata$p, mydata[,get(paste0(child_models[i], '_cv_pred'))])^2,2)))
+      #calculate weighted stackers
+      #for the fits with data
+      mydata$stacked_preds <- rowWeightedMeans(X, w = s$solution)   # or can use: mydata$crossprod <- crossprod(t(X), s$solution)
+      
+      #Calculate the stacked predictions
+      covs$cv_custom_stage_1 <- rowWeightedMeans(C, w = s$solution)
     }
-    if(family == 'gaussian'){
-      message(paste0(child_models[i], ' correlation: ', round(cor(mydata$n, mydata[,get(paste0(child_models[i], '_cv_pred'))])^2,2)))
-    }
-  }
-   
-  #save the temporary files
-  if(centre_scale == TRUE){
-    mydata$year <-  NULL
-    covs$year <- NULL
-  }
-  write.csv(mydata, paste0(outputdir, '/fitted_child_models.csv'), row.names = F)
-  write.csv(covs, paste0(outputdir, '/child_model_preds.csv'), row.names = F)
-  
-  #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-  # Combined the child model estimates ####
-  #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-  # what methods to use to create the stackers
-  # use either a GPR or constrained weighted mean or other model
-  # ensure beta coefficients are contrained to sum to 1
-  
-  # specify child models to use (if need to remove some due to correlation), want max 5ish, remove others from dataframe
-  # child_models <- child_models[child_models!='xgboost']
-  # child_models <- child_models[child_models!='gam']
-  # child_models <- child_models[child_models!='lasso']
-  # child_models <- child_models[child_models!='ridge']
-  # child_models <- child_models[child_models!='enet']
-  # child_models <- child_models[child_models!='rf']
-  # child_models <- child_models[child_models!='nnet']
-  # child_models <- child_models[child_models!='cubist']
-  
-  #remove unwanted child models from the data frame to calculate child model weights
-  stackers <- data.table(mydata)
-  # stackers[, (colnames(stackers)[grep('xgboost', colnames(stackers))]) := NULL]
-  # stackers[, (colnames(stackers)[grep('gam', colnames(stackers))]) := NULL]
-  # stackers[, (colnames(stackers)[grep('lasso', colnames(stackers))]) := NULL]
-  # stackers[, (colnames(stackers)[grep('ridge', colnames(stackers))]) := NULL]
-  # stackers[, (colnames(stackers)[grep('enet', colnames(stackers))]) := NULL]
-  # stackers[, (colnames(stackers)[grep('rf', colnames(stackers))]) := NULL]
-  # stackers[, (colnames(stackers)[grep('nnet', colnames(stackers))]) := NULL]
-  # stackers[, (colnames(stackers)[grep('cubist', colnames(stackers))]) := NULL]
-  
-  stackers <- data.frame(stackers)
-  X <- as.matrix(stackers[colnames(stackers)[(grep('cv_pred', colnames(stackers)))]])
-  Y = if(family == 'binomial'){stackers$p}else if(family == 'gaussian'){stackers$n}
-  
-  #stack the predictions for all locations
-  C <- data.frame(covs)
-  C <- as.matrix(C[c(child_models)])
-  
-  #Select which stacker you are using and stack the estimates
-  
-  if(stacker == 'CWM'){
-    # The following code is from http://zoonek.free.fr/blosxom/R/2012-06-01_Optimization.html
-    # Calculate coefficients (child stacker weights)
-    # Coefficients must sum to 1 and >=0
-    s <- solve.QP( 
-      t(X) %*% X, t(Y) %*% X, 
-      cbind(  # One constraint per COLUMN
-        matrix(1, nr=length(child_models), nc=1),
-        diag(length(child_models)),
-        -diag(length(child_models))
-      ),
-      c(1, 
-        rep(0.000001, length(child_models)),
-        rep(-1, length(child_models))), 
-      meq = 1 # Only the first constraint is an equality if meq = 1 so set to 0, the others are >=
-    )
     
-    #calculate weighted stackers
-    #for the fits with data
-    mydata$stacked_preds <- rowWeightedMeans(X, w = s$solution)   # or can use: mydata$crossprod <- crossprod(t(X), s$solution)
-    
-    #Calculate the stacked predictions
-    covs$cv_custom_stage_1 <- rowWeightedMeans(C, w = s$solution)
-  }
-  
-  if(stacker == 'RWM'){
-    r2 <- rep(NA, length(child_models))
-    for(i in 1:length(child_models)){
-      if(family == 'binomial'){
-        r2[i] <- round(cor(mydata$p, mydata[,get(paste0(child_models[i], '_cv_pred'))])^2,2)
+    if(stacker == 'RWM'){
+      r2 <- rep(NA, length(child_models))
+      for(i in 1:length(child_models)){
+        if(family == 'binomial'){
+          r2[i] <- round(cor(mydata$p, mydata[,get(paste0(child_models[i], '_cv_pred'))])^2,2)
+        }
+        if(family == 'gaussian'){
+          r2[i] <- round(cor(mydata$n, mydata[,get(paste0(child_models[i], '_cv_pred'))])^2,2)
+        }
       }
+      
+      total <-  sum(r2)
+      weights <- r2/total
+      mydata$stacked_preds <- rowWeightedMeans(X, w = weights)   
+      covs$cv_custom_stage_1 <- rowWeightedMeans(C, w = weights)
+    }
+    
+    if(stacker == 'GBM'){
       if(family == 'gaussian'){
-        r2[i] <- round(cor(mydata$n, mydata[,get(paste0(child_models[i], '_cv_pred'))])^2,2)
+        form <- as.formula(paste0('n ~ ', paste(colnames(stackers)[(grep('cv_pred', colnames(stackers)))], collapse = " + ")))
       }
+      if(family == 'binomial'){
+        mydata$logit_p   <- logit(mydata$p)
+        form <- as.formula(paste0('logit_p ~ ', paste(colnames(stackers)[(grep('cv_pred', colnames(stackers)))], collapse = " + ")))
+      }
+      train_control_final <- trainControl(method = "cv",
+                                          number = 5,
+                                          savePredictions = "final",
+                                          index = list(mydata$a_rowid[mydata$fold_id!=1],
+                                                       mydata$a_rowid[mydata$fold_id!=2],
+                                                       mydata$a_rowid[mydata$fold_id!=3],
+                                                       mydata$a_rowid[mydata$fold_id!=4],
+                                                       mydata$a_rowid[mydata$fold_id!=5]),
+                                          indexOut =list(mydata$a_rowid[mydata$fold_id==1],
+                                                         mydata$a_rowid[mydata$fold_id==2],
+                                                         mydata$a_rowid[mydata$fold_id==3],
+                                                         mydata$a_rowid[mydata$fold_id==4],
+                                                         mydata$a_rowid[mydata$fold_id==5]))
+      
+      model_gbm<- 
+        train(form, data = mydata, method='gbm', trControl=train_control_final, tuneLength=3)
+      
+      # mydata[, 'stacked_preds'   := arrange(model_gbm$pred, rowIndex)[,"pred"]]
+      mydata[, 'stacked_preds'   := predict(model_gbm, mydata)]
+      mydata$stacked_preds <- inv.logit(mydata$stacked_preds)
+      mydata$logit_p <-  NULL
+      covs <- data.frame(covs)
+      colnames(covs)[colnames(covs) %in% child_models] <- colnames(stackers)[(grep('cv_pred', colnames(stackers)))]
+      covs$cv_custom_stage_1 <- predict(model_gbm, covs[colnames(covs)[(grep('cv_pred', colnames(covs)))]]) 
+      covs <- data.table(covs)
+      covs$cv_custom_stage_1 <- inv.logit(covs$cv_custom_stage_1)
+      
+      #save the covariate importance plot
+      jpeg(paste0(outputdir, 'stacker_cov_imporatance.jpeg'),
+           height = 10, width = 10, units = 'cm', res = 150)
+      ggplot(varImp(model_gbm, scale = FALSE)) +
+        labs(x = "Covariate", y = "Relative Importance") +
+        theme_bw()
+      
+      dev.off()
     }
     
-    total <-  sum(r2)
-    weights <- r2/total
-    mydata$stacked_preds <- rowWeightedMeans(X, w = weights)   
-    covs$cv_custom_stage_1 <- rowWeightedMeans(C, w = weights)
-  }
-  
-  if(stacker == 'GBM'){
-   if(family == 'gaussian'){
-    form <- as.formula(paste0('n ~ ', paste(colnames(stackers)[(grep('cv_pred', colnames(stackers)))], collapse = " + ")))
-   }
-    if(family == 'binomial'){
-    mydata$logit_p   <- logit(mydata$p)
-    form <- as.formula(paste0('logit_p ~ ', paste(colnames(stackers)[(grep('cv_pred', colnames(stackers)))], collapse = " + ")))
-   }
-    train_control_final <- trainControl(method = "cv",
-                                        number = 5,
-                                        savePredictions = "final",
-                                        index = list(mydata$a_rowid[mydata$fold_id!=1],
-                                                     mydata$a_rowid[mydata$fold_id!=2],
-                                                     mydata$a_rowid[mydata$fold_id!=3],
-                                                     mydata$a_rowid[mydata$fold_id!=4],
-                                                     mydata$a_rowid[mydata$fold_id!=5]),
-                                        indexOut =list(mydata$a_rowid[mydata$fold_id==1],
-                                                       mydata$a_rowid[mydata$fold_id==2],
-                                                       mydata$a_rowid[mydata$fold_id==3],
-                                                       mydata$a_rowid[mydata$fold_id==4],
-                                                       mydata$a_rowid[mydata$fold_id==5]))
-    
-    model_gbm<- 
-      train(form, data = mydata, method='gbm', trControl=train_control_final, tuneLength=3)
-    
-    # mydata[, 'stacked_preds'   := arrange(model_gbm$pred, rowIndex)[,"pred"]]
-    mydata[, 'stacked_preds'   := predict(model_gbm, mydata)]
-    mydata$stacked_preds <- inv.logit(mydata$stacked_preds)
-    mydata$logit_p <-  NULL
-    covs <- data.frame(covs)
-    colnames(covs)[colnames(covs) %in% child_models] <- colnames(stackers)[(grep('cv_pred', colnames(stackers)))]
-    covs$cv_custom_stage_1 <- predict(model_gbm, covs[colnames(covs)[(grep('cv_pred', colnames(covs)))]]) 
-    covs <- data.table(covs)
-    covs$cv_custom_stage_1 <- inv.logit(covs$cv_custom_stage_1)
-    
-    #save the covariate importance plot
-    jpeg(paste0(outputdir, 'stacker_cov_imporatance.jpeg'),
-         height = 10, width = 10, units = 'cm', res = 150)
-    ggplot(varImp(model_gbm, scale = FALSE)) +
-    labs(x = "Covariate", y = "Relative Importance") +
-    theme_bw()
-    
-    dev.off()
-  }
-  
-  if(stacker == 'GLM'){
-    if(family == 'gaussian'){
-      form <- as.formula(paste0('n ~ ', paste(colnames(stackers)[(grep('cv_pred', colnames(stackers)))], collapse = " + ")))
-    }
-    if(family == 'binomial'){
-      # mydata$logit_p   <- logit(mydata$p)
-      # form <- as.formula(paste0('logit_p ~ ', paste(colnames(stackers)[(grep('cv_pred', colnames(stackers)))], collapse = " + ")))
-      form <- as.formula(paste0('p ~ ', paste(colnames(stackers)[(grep('cv_pred', colnames(stackers)))], collapse = " + ")))
-    }
-    
-    train_control_final <- trainControl(method = "cv",
-                                        number = 5,
-                                        savePredictions = "final",
-                                        index = list(mydata$a_rowid[mydata$fold_id!=1],
-                                                     mydata$a_rowid[mydata$fold_id!=2],
-                                                     mydata$a_rowid[mydata$fold_id!=3],
-                                                     mydata$a_rowid[mydata$fold_id!=4],
-                                                     mydata$a_rowid[mydata$fold_id!=5]),
-                                        indexOut =list(mydata$a_rowid[mydata$fold_id==1],
-                                                       mydata$a_rowid[mydata$fold_id==2],
-                                                       mydata$a_rowid[mydata$fold_id==3],
-                                                       mydata$a_rowid[mydata$fold_id==4],
-                                                       mydata$a_rowid[mydata$fold_id==5]))
-    
-    model_glm<- 
-      train(form, data = mydata, method='glm', trControl=train_control_final, tuneLength=3)
-   
+    if(stacker == 'GLM'){
+      if(family == 'gaussian'){
+        form <- as.formula(paste0('n ~ ', paste(colnames(stackers)[(grep('cv_pred', colnames(stackers)))], collapse = " + ")))
+      }
+      if(family == 'binomial'){
+        # mydata$logit_p   <- logit(mydata$p)
+        # form <- as.formula(paste0('logit_p ~ ', paste(colnames(stackers)[(grep('cv_pred', colnames(stackers)))], collapse = " + ")))
+        form <- as.formula(paste0('p ~ ', paste(colnames(stackers)[(grep('cv_pred', colnames(stackers)))], collapse = " + ")))
+      }
+      
+      train_control_final <- trainControl(method = "cv",
+                                          number = 5,
+                                          savePredictions = "final",
+                                          index = list(mydata$a_rowid[mydata$fold_id!=1],
+                                                       mydata$a_rowid[mydata$fold_id!=2],
+                                                       mydata$a_rowid[mydata$fold_id!=3],
+                                                       mydata$a_rowid[mydata$fold_id!=4],
+                                                       mydata$a_rowid[mydata$fold_id!=5]),
+                                          indexOut =list(mydata$a_rowid[mydata$fold_id==1],
+                                                         mydata$a_rowid[mydata$fold_id==2],
+                                                         mydata$a_rowid[mydata$fold_id==3],
+                                                         mydata$a_rowid[mydata$fold_id==4],
+                                                         mydata$a_rowid[mydata$fold_id==5]))
+      
+      model_glm<- 
+        train(form, data = mydata, method='glm', trControl=train_control_final, tuneLength=3)
+      
       # mydata[, 'stacked_preds'   := arrange(model_glm$pred, rowIndex)[,"pred"]]
       mydata[, 'stacked_preds'   := predict(model_glm, mydata)]
       # mydata$stacked_preds <- inv.logit(mydata$stacked_preds)
       # mydata$logit_p <-  NULL
       
-    covs <- data.frame(covs)
-    colnames(covs)[colnames(covs) %in% child_models] <- colnames(stackers)[(grep('cv_pred', colnames(stackers)))]
-    covs$cv_custom_stage_1 <- predict(model_glm, covs[colnames(covs)[(grep('cv_pred', colnames(covs)))]]) 
-    # covs$cv_custom_stage_1 <- inv.logit(covs$cv_custom_stage_1)
-    covs <- data.table(covs)
-  }
-  
-  if(stacker == 'nnet'){
-    if(family == 'gaussian'){
-      form <- as.formula(paste0('n ~ ', paste(colnames(stackers)[(grep('cv_pred', colnames(stackers)))], collapse = " + ")))
+      covs <- data.frame(covs)
+      colnames(covs)[colnames(covs) %in% child_models] <- colnames(stackers)[(grep('cv_pred', colnames(stackers)))]
+      covs$cv_custom_stage_1 <- predict(model_glm, covs[colnames(covs)[(grep('cv_pred', colnames(covs)))]]) 
+      # covs$cv_custom_stage_1 <- inv.logit(covs$cv_custom_stage_1)
+      covs <- data.table(covs)
     }
-    if(family == 'binomial'){
-      form <- as.formula(paste0('p ~ ', paste(colnames(stackers)[(grep('cv_pred', colnames(stackers)))], collapse = " + ")))
-    }  
-    train_control_final <- trainControl(method = "cv",
-                                        number = 5,
-                                        savePredictions = "final",
-                                        index = list(mydata$a_rowid[mydata$fold_id!=1],
-                                                     mydata$a_rowid[mydata$fold_id!=2],
-                                                     mydata$a_rowid[mydata$fold_id!=3],
-                                                     mydata$a_rowid[mydata$fold_id!=4],
-                                                     mydata$a_rowid[mydata$fold_id!=5]),
-                                        indexOut =list(mydata$a_rowid[mydata$fold_id==1],
-                                                       mydata$a_rowid[mydata$fold_id==2],
-                                                       mydata$a_rowid[mydata$fold_id==3],
-                                                       mydata$a_rowid[mydata$fold_id==4],
-                                                       mydata$a_rowid[mydata$fold_id==5]))
     
-    model_nnet<- 
-      train(form, data = mydata, method='nnet', trControl=train_control_final, tuneLength=3)
+    #clean up the covs dataset
+    stg1 <-  covs[, .(adj_id, year_id,
+                      cv_custom_stage_1 = cv_custom_stage_1)]
     
-    # mydata[, 'stacked_preds'   := arrange(model_nnet$pred, rowIndex)[,"pred"]]
-    mydata[, 'stacked_preds'   := predict(model_nnet, mydata)]
+    #check that the estimates are within expected range
+    max(stg1$cv_custom_stage_1, na.rm = T)
     
-    covs <- data.frame(covs)
-    colnames(covs)[colnames(covs) %in% child_models] <- colnames(stackers)[(grep('cv_pred', colnames(stackers)))]
-    covs$cv_custom_stage_1 <- predict(model_gbm, covs[colnames(covs)[(grep('cv_pred', colnames(covs)))]]) 
-    covs <- data.table(covs)
+    #save prediction
+    write.csv(mydata, paste0(outputdir, '/fitted_stackers_h', h, '.csv'), row.names = F)
+    write.csv(stg1, paste0(outputdir, '/custom_stage1_df_h', h, '.csv'), row.names = F)
+    
   }
   
-  # covs$year_id <- covs$year_id-2
-  #clean up the covs dataset
-  stg1 <-  covs[, .(adj_id, year_id,
-                    cv_custom_stage_1 = cv_custom_stage_1)]
-  
-  #check that the estimates are within expected range
-  max(stg1$cv_custom_stage_1, na.rm = T)
-  
-  #save prediction
-  write.csv(mydata, paste0(outputdir, '/fitted_stackers.csv'), row.names = F)
-  write.csv(stg1, paste0(outputdir, '/custom_stage1_df.csv'), row.names = F)
-  
-  #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-  # Plot out the is and oos preds ####
-  #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-  
-  #out of sample plots
-  for(stack in c(child_models, 'stacked_preds')){
-    png(paste0(outputdir, '/', stack, '_oos.png'),
-        height = 12, width = 12, res = 350, unit = 'in')
-    print(
-      ggplot(mydata)+
-        geom_point(aes(x = if(family == 'binomial'){p}else if(family == 'gaussian'){n},
-                       y=if(stack == 'stacked_preds'){stacked_preds} else{get(paste0(stack, '_cv_pred'))}))+
-        geom_abline(slope = 1, intercept = 0, colour = 'red')+
-        theme_bw() +
-        theme(strip.background = element_rect(fill = "white")) +
-        labs(
-          x = "Data Estimate",
-          y = "Mean Prediction",
-          size = "Weight",
-          title = (paste0("Validation Plot for ", stack)),
-          subtitle = "OOS: TRUE")
-    )
-    dev.off()
-  }
-  
-  #in sample plots
-  for(stack in child_models){
-    png(paste0(outputdir, '/', stack, '_is.png'),
-        height = 12, width = 12, res = 350, unit = 'in')
-    print(
-      ggplot(mydata)+
-        geom_point(aes(x = if(family == 'binomial'){p}else if(family == 'gaussian'){n},
-                       y=get(paste0(stack, '_full_pred'))))+
-        geom_abline(slope = 1, intercept = 0, colour = 'red')+
-        theme_bw() +
-        theme(strip.background = element_rect(fill = "white")) +
-        labs(
-          x = "Data Estimate",
-          y = "Mean Prediction",
-          size = "Weight",
-          title = (paste0("Validation Plot for ", stack)),
-          subtitle = "OOS: FALSE")
-    )
-    dev.off()
-  }
-  
-  #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-  # Calculate metrics for all models ####
-  #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-  #get the RMSE and R2 of each model into a data frame and save it
-  child_model_metrics <- data.frame(child_models)
-  child_model_metrics$r_sq <- NA
-  
-  mydata <- data.frame(mydata)
-  for(i in 1:length(child_models)){
-    cm <- paste0(child_models, '_cv_pred')[i]
-    pred <- mydata[c(cm)]
-    pred <-  unlist(pred)
-    child_model_metrics$rmse[child_model_metrics$child_models == child_models[i]] <- round(RMSE(pred, if(family == 'binomial'){mydata$p}else if(family == 'gaussian'){mydata$n}),4)
-    child_model_metrics$r_sq[child_model_metrics$child_models == child_models[i]] <- round(cor(pred, if(family == 'binomial'){mydata$p}else if(family == 'gaussian'){mydata$n})^2,2)
-  }
-  
-  child_model_metrics$child_models <- as.character(child_model_metrics$child_models)
-  child_model_metrics <- rbind(child_model_metrics, c('Stackers', NA, NA) )
-  child_model_metrics$rmse[child_model_metrics$child_models=='Stackers'] <- round(RMSE(mydata$stacked_preds, if(family == 'binomial'){mydata$p}else if(family == 'gaussian'){mydata$n}),4)
-  child_model_metrics$r_sq[child_model_metrics$child_models=='Stackers'] <- round(cor(mydata$stacked_preds, if(family == 'binomial'){mydata$p}else if(family == 'gaussian'){mydata$n})^2,2)
-  
-  write.csv(child_model_metrics, paste0(outputdir, '/stacker_metrics.csv'), row.names = F)
-  
-  #~~~~~~~~~~~~~~~~~~~~~#
-  # Plot the results ####
-  #~~~~~~~~~~~~~~~~~~~~~#
-  #aggregate up to the national level and plot
-  pops <- fread('covariates//annual_covs_adm1.csv')
-  pops <- pops[,.(admin_code, year, population)]
-  locs <- fread('covariates/all_admin1_typhi_covs.csv')
-  locs <- locs[,.(COUNTRY_ID, admin_code, adj_id)]
-  locs <- unique(locs)
-  pops <- merge(pops, locs, by = 'admin_code')
-  
-  colnames(covs)[colnames(covs) == 'year_id'] <- 'year'
-  covs <- merge(covs, pops, by = c('adj_id', 'year'))
-  
-  agg_preds <- covs[,.(xgboost = weighted.mean(xgboost, population),
-                       ridge = weighted.mean(ridge, population),
-                       gam = weighted.mean(gam, population),
-                       cv_custom_stage_1 = weighted.mean(cv_custom_stage_1, population)),
-                    by = c('COUNTRY_ID', 'year')]
-  
-  #merge on regions
-  locs <- read.dbf("C:/Users/Annie/Documents/GRAM/shapefiles/GBD2019_analysis_final.dbf")
-  locs <- locs[locs$level == 3,]
-  locs <- locs[c('ihme_lc_id', 'spr_reg_id')]
-  locs$ihme_lc_id <- as.character(locs$ihme_lc_id)
-  
-  agg_preds <-  merge(agg_preds, locs, by.x = 'COUNTRY_ID', by.y = 'ihme_lc_id')
-  
-  #merge on the data points
-  input <- mydata[c('country', 'year_id', 'p', 'adj_id')]
-  
-  agg_preds <- merge(agg_preds, input, 
-                     by.x = c('COUNTRY_ID', 'year'), by.y = c('country', 'year_id'),
-                     all.x = T, all.y = T, allow.cartesian = T)
-  
-  #reshape long
-  agg_preds <- melt(agg_preds, id.vars = c('COUNTRY_ID', 'spr_reg_id', 'year', 'p'),
-               measure.vars = c('cv_custom_stage_1', child_models))
-  
-  # Plot out the stg1s data and check
-  pdf(paste0(outputdir, '/stackers.pdf'),
-      height = 8.3, width = 11.7)
-  
-  #plot out a page for each region
-  for(i in 1:length(unique(agg_preds$spr_reg_id))){
-    subset <- agg_preds[agg_preds$spr_reg_id == unique(agg_preds$spr_reg_id)[i],]
-    print(
-      ggplot(subset)+
-        geom_line(aes(x=year, y = value, group = variable, colour = variable))+
-        geom_point(aes(x=year, y = (p)))+
-        facet_wrap(~COUNTRY_ID, nrow = ceiling(sqrt(length(unique(subset$COUNTRY_ID)))))+
-        ylim(0, 1)
-    )
-  }
-  dev.off()
-  
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-#Plot subnational results ####
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
-locs <- fread("covariates/all_admin1_typhi_covs.csv")
-locs <- unique(locs[,.(COUNTRY_ID, adj_id)])
-  
-preds <- merge(covs, input, 
-                   by.x = c('COUNTRY_ID', 'year', 'adj_id'), by.y = c('country', 'year_id', 'adj_id'),
-                   all.x = T, all.y = T, allow.cartesian = T)
-
-
-#reshape long
-preds <- melt(preds, id.vars = c('adj_id', 'COUNTRY_ID', 'year', 'p'),
-              measure.vars = c('cv_custom_stage_1', child_models))
-
-# Plot out the stg1s data and check
-pdf(paste0(outputdir, '/subnat_stackers.pdf'),
-    height = 8.3, width = 11.7)
-
-#plot out a page for each region
-for(i in 1:length(unique(preds$COUNTRY_ID))){
-  subset <- preds[preds$COUNTRY_ID == unique(preds$COUNTRY_ID)[i],]
-  print(
-    ggplot(subset)+
-      geom_line(aes(x=year, y = value, group = variable, colour = variable))+
-      geom_point(aes(x=year, y = (p)))+
-      facet_wrap(~adj_id, nrow = ceiling(sqrt(length(unique(subset$adj_id)))))+
-      ylim(0, 1)+
-      ggtitle(unique(subset$COUNTRY_ID))+
-      theme(plot.title = element_text(hjust = 0.5))
-    )
-}
-dev.off()

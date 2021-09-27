@@ -36,7 +36,7 @@
   
   #specify child models to include
   # can be xgboost (BRT), gam, ridge, lasso, enet, nnet (neural nets), rf (random forest), cubist
-  child_models <- c('gam', 'xgboost', 'ridge')
+  child_models <- c('xgboost', 'ridge')
 
   #specify the stacker you want to use out of CWM (constrained weighted mean, from quadratic programming), 
   # RWM (weighted mean based on R-sqr) GBM, GLM, nnet
@@ -76,7 +76,7 @@
   
   #Specify which years you are modelling for
   min_year <- 1990
-  max_year <- 2018
+  max_year <- 2019
   
   #rename some colums to avoid confusion
   colnames(mydata)[colnames(mydata)==d] <- 'd' 
@@ -1093,7 +1093,6 @@
   
   agg_preds <- covs[,.(xgboost = weighted.mean(xgboost, population),
                        ridge = weighted.mean(ridge, population),
-                       gam = weighted.mean(gam, population),
                        cv_custom_stage_1 = weighted.mean(cv_custom_stage_1, population)),
                     by = c('COUNTRY_ID', 'year')]
   

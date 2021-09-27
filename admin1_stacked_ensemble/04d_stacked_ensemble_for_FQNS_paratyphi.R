@@ -75,7 +75,7 @@
   
   #Specify which years you are modelling for
   min_year <- 1990
-  max_year <- 2018
+  max_year <- 2019
   
   #rename some colums to avoid confusion
   colnames(mydata)[colnames(mydata)==d] <- 'd' 
